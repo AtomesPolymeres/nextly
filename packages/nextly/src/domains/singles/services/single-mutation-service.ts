@@ -59,7 +59,7 @@ import {
   applyFieldWriteAccess,
   attachFieldValidators,
   runFieldHooks,
-  callerAccessGrants,
+  resolvedCallerGrants,
 } from "../../../shared/lib/field-level-registry";
 import {
   coerceDateFieldsToDate,
@@ -125,6 +125,7 @@ import type {
 } from "../types";
 
 import {
+  readCompanionValuesInTx,
   splitPendingChange,
   writeCompanionValues,
 } from "./apply-pending-change";
@@ -656,11 +657,26 @@ export class SingleMutationService extends BaseService {
       // again runs inside the write transaction, on the draft that transaction
       // has locked. The one thing it cannot do there is resolve the caller's
       // grants, which queries the pooled connection the transaction is
-      // holding, so that is resolved here and handed in.
-      const promoteGrants = callerAccessGrants(
-        options.user,
-        options.authenticatedScope
-      );
+      // holding, so they are resolved here and handed in already answered.
+      // AWAITED, not merely constructed: `callerAccessGrants` is lazy, and a
+      // resolver first asked from inside the transaction does its lookups
+      // there, which is the hang this avoids.
+      //
+      // Only where a pending change can exist to promote. Whether THIS write
+      // publishes one is not knowable yet, since a `beforeChange` hook can set
+      // the status and the draft is read under the row lock, but a Single with
+      // no published state or no drafts can never reach the gate at all. Left
+      // unconditional, every authenticated update paid for the roles and
+      // permissions queries to answer a question it would never ask. A trusted
+      // write skips them for the same reason: `applyFieldWriteAccess` returns
+      // on `overrideAccess` before it looks at grants.
+      const mayReachPromoteGate =
+        (singleMeta as { status?: boolean }).status === true &&
+        singleMeta.versions?.drafts?.enabled === true &&
+        options.overrideAccess !== true;
+      const promoteGrants = mayReachPromoteGate
+        ? await resolvedCallerGrants(options.user, options.authenticatedScope)
+        : undefined;
 
       // 6.25. Single-level beforeChange hooks, on data the validation gate has
       // just passed. The declaration used to register onto `beforeUpdate`,
@@ -1373,7 +1389,23 @@ export class SingleMutationService extends BaseService {
                         },
                         singleMeta.fields
                       ),
-                    liveStoredFor: () => Promise.resolve(promotedInto),
+                    // The main row is not the whole live document for a
+                    // localized Single: a translation is on its language's
+                    // companion row, and compared against the main row alone
+                    // every translation reads as absent, so an untouched one
+                    // looks like an edit.
+                    liveStoredFor: async gateLocale =>
+                      companion && companionPhysicallyExists && gateLocale
+                        ? {
+                            ...promotedInto,
+                            ...(await readCompanionValuesInTx(
+                              tx,
+                              companion,
+                              promotedInto.id,
+                              gateLocale
+                            )),
+                          }
+                        : promotedInto,
                     callerData: currentData,
                     localizedFieldNames,
                     enforceLocalizedRequired,
