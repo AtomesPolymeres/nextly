@@ -850,6 +850,11 @@ export class UserQueryService extends BaseService {
       });
     }
 
+    // Query the normalized value the schema produced, not the raw input:
+    // stored addresses are lowercase, and the database's `=` is
+    // case-sensitive, so the raw casing would miss them.
+    const normalizedEmail = validation.data;
+
     const { users } = this.tables;
 
     // Resolve user_ext table (null if no custom fields)
@@ -873,7 +878,7 @@ export class UserQueryService extends BaseService {
     const rows = await (this.db as unknown as DrizzleChain)
       .select(selectColumns)
       .from(users)
-      .where(eq(users.email, email))
+      .where(eq(users.email, normalizedEmail))
       .limit(1);
 
     if (!rows.length) return null;
