@@ -631,14 +631,22 @@ export class AuthService extends BaseService {
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const user = await this.db.query.users.findFirst({
-        where: { email: requireFilterValue(normalizedEmail, "email") },
-        columns: {
-          id: true,
-          email: true,
-          name: true,
-        },
-      });
+      // Rows written before emails were normalized are only reachable by
+      // their stored spelling, so the caller's exact input gets a second
+      // probe when the canonical one has no row.
+      const probeUser = (spelling: string) =>
+        this.db.query.users.findFirst({
+          where: { email: requireFilterValue(spelling, "email") },
+          columns: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        });
+
+      const user =
+        (await probeUser(normalizedEmail)) ??
+        (email === normalizedEmail ? null : await probeUser(email));
 
       if (!user) {
         // Silent success — never reveal whether the email is registered.

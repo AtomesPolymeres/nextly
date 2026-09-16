@@ -883,12 +883,15 @@ export class UserQueryService extends BaseService {
     const rows = await (this.db as unknown as DrizzleChain)
       .select(selectColumns)
       .from(users)
-      .where(inArray(users.email, lookupEmails))
-      .limit(1);
+      .where(inArray(users.email, lookupEmails));
 
     if (!rows.length) return null;
 
-    const row = rows[0];
+    // A database upgraded from the old case-sensitive write path can hold
+    // both spellings of one address, and both match the array above. The
+    // caller's exact input is the account previous exact-match lookups
+    // returned, so it wins over the canonical twin.
+    const row = rows.find(candidate => candidate.email === email) ?? rows[0];
     const userData: Record<string, unknown> = {
       id: row.id,
       email: row.email,

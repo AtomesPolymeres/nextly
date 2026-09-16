@@ -193,6 +193,30 @@ describe("user email normalization across create, duplicate check and lookup", (
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it("findByEmail returns the exact-spelling account when case twins exist", async () => {
+    // A database upgraded from the old write path can hold both rows: the
+    // unique index is case-sensitive, so this pair was insertable before
+    // normalization. The lookup must return the account the caller's
+    // spelling names, never pick one of the twins arbitrarily.
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      ["twin-lower", "twin@x.com", "Twin Lower", 1, nowEpoch, nowEpoch]
+    );
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      ["twin-upper", "Twin@X.com", "Twin Upper", 1, nowEpoch, nowEpoch]
+    );
+
+    const byMixed = await queries.findByEmail("Twin@X.com");
+    expect(String(byMixed?.id)).toBe("twin-upper");
+
+    const byLower = await queries.findByEmail("twin@x.com");
+    expect(String(byLower?.id)).toBe("twin-lower");
+  });
+
   it("findByEmail matches regardless of the case it is called with", async () => {
     // Seeded directly and lowercase so this isolates the lookup side: the
     // query input's case differs from the stored value on purpose.
