@@ -25,6 +25,7 @@ import type { Logger } from "../../../services/shared";
 import { affectedRowCount } from "../../../shared/lib/affected-row-count";
 import { requireFilterValue } from "../../../shared/lib/require-filter-value";
 import { auditReason } from "../../audit/audit-reasons";
+import { UserQueryService } from "../../users/services/user-query-service";
 import { generateInviteTokenValue, hashInviteToken } from "../lib/invite-token";
 
 // Re-exported: this module owned `affectedRowCount` before it was shared, and
@@ -625,29 +626,14 @@ export class AuthService extends BaseService {
     email: string,
     options?: { redirectPath?: string; disableEmail?: boolean }
   ): Promise<{ token?: string }> {
-    // Normalize email to ensure consistent matching with verifyCredentials
-    // and with the normalized spelling createLocalUser stores; a mixed-case
-    // input looked up verbatim would silently find no one.
-    const normalizedEmail = email.trim().toLowerCase();
+    // The account selection is the canonical resolver's — exact spelling
+    // first, then the normalized form — so a resend verifies the same
+    // account a lookup names, and any future change to how legacy rows are
+    // resolved lands in one place.
+    const queryService = new UserQueryService(this.adapter, this.logger);
 
     try {
-      // The caller's exact spelling is probed first: with case twins on an
-      // upgraded database it names the account the token must verify, and
-      // the canonical form is the fallback that covers everything written
-      // since normalization.
-      const probeUser = (spelling: string) =>
-        this.db.query.users.findFirst({
-          where: { email: requireFilterValue(spelling, "email") },
-          columns: {
-            id: true,
-            email: true,
-            name: true,
-          },
-        });
-
-      const user =
-        (await probeUser(email)) ??
-        (email === normalizedEmail ? null : await probeUser(normalizedEmail));
+      const user = await queryService.findByEmail(email);
 
       if (!user) {
         // Silent success — never reveal whether the email is registered.
