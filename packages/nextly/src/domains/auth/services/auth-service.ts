@@ -707,6 +707,9 @@ export class AuthService extends BaseService {
       );
       return this.undeliveredTokenFallback(rawToken);
     } catch (error) {
+      // A malformed address surfaces as the resolver's VALIDATION_ERROR, not
+      // as a database failure dressed up as a 500.
+      if (NextlyError.is(error)) throw error;
       // Normalise raw driver errors so the DB kind is preserved.
       throw NextlyError.fromDatabaseError(toDbError(this.dialect, error));
     }
