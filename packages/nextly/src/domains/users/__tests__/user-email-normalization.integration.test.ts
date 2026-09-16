@@ -271,4 +271,59 @@ describe("user email normalization across create, duplicate check and lookup", (
     }>("SELECT email_verified FROM users WHERE id = ?", ["legacy-token"]);
     expect(rows[0]?.email_verified).not.toBeNull();
   });
+
+  it("a resend for the exact legacy twin verifies that twin, not its double", async () => {
+    // With both spellings on the database, the token must activate the
+    // account the caller actually addressed: probing the canonical spelling
+    // first would key the token to the lowercase twin and verify it instead.
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, email_verified, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "twin-token-lower",
+        "resend@x.com",
+        "Resend Lower",
+        1,
+        null,
+        nowEpoch,
+        nowEpoch,
+      ]
+    );
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, email_verified, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "twin-token-upper",
+        "Resend@X.com",
+        "Resend Upper",
+        1,
+        null,
+        nowEpoch,
+        nowEpoch,
+      ]
+    );
+
+    const auth = new AuthService(adapter, silentLogger);
+    const { token } = await auth.generateEmailVerificationToken(
+      "Resend@X.com",
+      { disableEmail: true }
+    );
+    expect(token).toBeTruthy();
+
+    await auth.verifyEmail(token as string);
+
+    const rows = await adapter.executeQuery<{
+      id: string;
+      email_verified: number | null;
+    }>("SELECT id, email_verified FROM users WHERE id IN (?, ?)", [
+      "twin-token-lower",
+      "twin-token-upper",
+    ]);
+    const verified = Object.fromEntries(
+      rows.map(r => [r.id, r.email_verified !== null])
+    );
+    expect(verified["twin-token-upper"]).toBe(true);
+    expect(verified["twin-token-lower"]).toBe(false);
+  });
 });

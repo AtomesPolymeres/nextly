@@ -631,9 +631,10 @@ export class AuthService extends BaseService {
     const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      // Rows written before emails were normalized are only reachable by
-      // their stored spelling, so the caller's exact input gets a second
-      // probe when the canonical one has no row.
+      // The caller's exact spelling is probed first: with case twins on an
+      // upgraded database it names the account the token must verify, and
+      // the canonical form is the fallback that covers everything written
+      // since normalization.
       const probeUser = (spelling: string) =>
         this.db.query.users.findFirst({
           where: { email: requireFilterValue(spelling, "email") },
@@ -645,8 +646,8 @@ export class AuthService extends BaseService {
         });
 
       const user =
-        (await probeUser(normalizedEmail)) ??
-        (email === normalizedEmail ? null : await probeUser(email));
+        (await probeUser(email)) ??
+        (email === normalizedEmail ? null : await probeUser(normalizedEmail));
 
       if (!user) {
         // Silent success — never reveal whether the email is registered.
