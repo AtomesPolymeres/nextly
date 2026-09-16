@@ -908,7 +908,7 @@ export class UserQueryService extends BaseService {
           })
           .from(users)
           .leftJoin(userExtTable, eq(users.id, userExtTable.user_id))
-          .where(eq(users.email, email))
+          .where(eq(users.email, normalizedEmail))
           .limit(1);
 
         if (extRows.length > 0) {

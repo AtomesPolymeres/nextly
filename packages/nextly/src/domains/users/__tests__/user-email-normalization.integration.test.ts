@@ -133,7 +133,7 @@ describe("user email normalization across create, duplicate check and lookup", (
     return rows[0]?.email ?? null;
   }
 
-  it("stores the email lowercased and trimmed", async () => {
+  it("stores the email lowercased", async () => {
     const created = await mutations.createLocalUser({
       email: "MixedCase@Example.COM",
       name: "Mixed Case",
@@ -169,6 +169,43 @@ describe("user email normalization across create, duplicate check and lookup", (
       "SELECT COUNT(*) as n FROM users WHERE email LIKE 'casevariant@x.com' COLLATE NOCASE"
     );
     expect(Number(rows[0]?.n ?? 0)).toBe(1);
+  });
+
+  it("rejects a create that repeats a legacy mixed-case row's address", async () => {
+    // Two rows seeded directly with the OLD write path's spelling, so this
+    // exercises the upgrade state: rows that predate normalization. The
+    // duplicate probe must judge the address case-insensitively, or the
+    // case-sensitive unique index admits a second, lowercased account for
+    // the same logical email.
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      ["legacy-a", "Legacy@X.com", "Legacy A", 1, nowEpoch, nowEpoch]
+    );
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      ["legacy-b", "Other@X.com", "Legacy B", 1, nowEpoch, nowEpoch]
+    );
+
+    // The exact legacy spelling repeats.
+    await expect(
+      mutations.createLocalUser({
+        email: "Legacy@X.com",
+        name: "Shadow A",
+        password: PASSWORD,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    // The canonical spelling of the same address repeats too.
+    await expect(
+      mutations.createLocalUser({
+        email: "other@x.com",
+        name: "Shadow B",
+        password: PASSWORD,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("findByEmail matches regardless of the case it is called with", async () => {
