@@ -625,9 +625,14 @@ export class AuthService extends BaseService {
     email: string,
     options?: { redirectPath?: string; disableEmail?: boolean }
   ): Promise<{ token?: string }> {
+    // Normalize email to ensure consistent matching with verifyCredentials
+    // and with the normalized spelling createLocalUser stores; a mixed-case
+    // input looked up verbatim would silently find no one.
+    const normalizedEmail = email.trim().toLowerCase();
+
     try {
       const user = await this.db.query.users.findFirst({
-        where: { email: requireFilterValue(email, "email") },
+        where: { email: requireFilterValue(normalizedEmail, "email") },
         columns: {
           id: true,
           email: true,
@@ -645,14 +650,16 @@ export class AuthService extends BaseService {
 
       await this.db
         .delete(this.tables.emailVerificationTokens)
-        .where(eq(this.tables.emailVerificationTokens.identifier, email));
+        .where(
+          eq(this.tables.emailVerificationTokens.identifier, normalizedEmail)
+        );
 
       const expiresAt = new Date(
         Date.now() + this.TOKEN_EXPIRY_HOURS * 60 * 60 * 1000
       );
 
       await this.db.insert(this.tables.emailVerificationTokens).values({
-        identifier: email,
+        identifier: normalizedEmail,
         tokenHash,
         expires: expiresAt,
       });

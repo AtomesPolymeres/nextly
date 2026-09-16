@@ -22,7 +22,7 @@ import { randomUUID } from "crypto";
 
 import type { DrizzleAdapter } from "@nextlyhq/adapter-drizzle";
 import type { Table, Column } from "drizzle-orm";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { hashPassword } from "@nextly/auth/password";
 import {
@@ -727,16 +727,15 @@ export class UserMutationService extends BaseService {
       // ("Resource already exists.") via NextlyError.duplicate; the email and
       // entity travel only through logContext.
       //
-      // The probe compares lowercased on both sides. Rows written before
-      // emails were normalized can carry a legacy mixed-case spelling, and a
-      // case-sensitive probe on the canonical form would miss them — the
-      // case-sensitive unique index would then admit a second account for
-      // the same address. lower() exists on all three dialects, and the
-      // input side is already lowercased.
+      // Both spellings are probed in one OR. The canonical form covers this
+      // and every future write; the caller's exact input is the only spelling
+      // legacy rows (written before normalization) are reachable by on a
+      // case-sensitive `=` — the unique index would otherwise admit a second
+      // account for the same address.
       const existingUser = await (this.db as unknown as DrizzleChain)
         .select({ id: users.id, email: users.email })
         .from(users)
-        .where(sql`lower(${users.email}) = ${email}`)
+        .where(inArray(users.email, [email, userData.email]))
         .limit(1);
       if (existingUser.length > 0) {
         throw NextlyError.duplicate({

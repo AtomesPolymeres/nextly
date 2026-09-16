@@ -850,10 +850,15 @@ export class UserQueryService extends BaseService {
       });
     }
 
-    // Query the normalized value the schema produced, not the raw input:
-    // stored addresses are lowercase, and the database's `=` is
-    // case-sensitive, so the raw casing would miss them.
+    // Query the normalized value the schema produced, and — failing that —
+    // the spelling the caller actually passed. Rows written before emails
+    // were normalized can carry a mixed-case spelling, so a caller repeating
+    // that exact spelling (the super-admin seeder looking up the configured
+    // address) must still find the account; the normalized arm covers
+    // everything written since. A duplicate entry is harmless — inArray is
+    // an OR over the spellings.
     const normalizedEmail = validation.data;
+    const lookupEmails = [normalizedEmail, email];
 
     const { users } = this.tables;
 
@@ -878,7 +883,7 @@ export class UserQueryService extends BaseService {
     const rows = await (this.db as unknown as DrizzleChain)
       .select(selectColumns)
       .from(users)
-      .where(eq(users.email, normalizedEmail))
+      .where(inArray(users.email, lookupEmails))
       .limit(1);
 
     if (!rows.length) return null;
@@ -908,7 +913,7 @@ export class UserQueryService extends BaseService {
           })
           .from(users)
           .leftJoin(userExtTable, eq(users.id, userExtTable.user_id))
-          .where(eq(users.email, normalizedEmail))
+          .where(inArray(users.email, lookupEmails))
           .limit(1);
 
         if (extRows.length > 0) {

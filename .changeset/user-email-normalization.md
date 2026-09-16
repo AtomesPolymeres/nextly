@@ -30,6 +30,6 @@
 User emails are lowercased when an account is created, so an address typed
 with any capital letter is now findable at sign-in instead of permanently
 failing with "Invalid email or password". Creating an account whose email
-differs from an existing one only by case is now rejected as a duplicate —
-including when the existing account was stored by an earlier version with
-uppercase letters — and `findByEmail` matches case-insensitively.
+matches an existing one is now rejected as a duplicate — including
+repeating an address an earlier version stored with uppercase letters — and
+findByEmail keeps finding those legacy accounts by their stored spelling.

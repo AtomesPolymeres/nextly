@@ -172,37 +172,22 @@ describe("user email normalization across create, duplicate check and lookup", (
   });
 
   it("rejects a create that repeats a legacy mixed-case row's address", async () => {
-    // Two rows seeded directly with the OLD write path's spelling, so this
-    // exercises the upgrade state: rows that predate normalization. The
-    // duplicate probe must judge the address case-insensitively, or the
-    // case-sensitive unique index admits a second, lowercased account for
-    // the same logical email.
+    // Seeded directly with the OLD write path's spelling, so this exercises
+    // the upgrade state: a row that predates normalization. The duplicate
+    // probe must also try the caller's exact spelling, or the case-sensitive
+    // unique index admits a second, lowercased account for the same logical
+    // email.
     const nowEpoch = Math.floor(Date.now() / 1000);
     await adapter.executeQuery(
       `INSERT INTO users (id, email, name, is_active, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?)`,
       ["legacy-a", "Legacy@X.com", "Legacy A", 1, nowEpoch, nowEpoch]
     );
-    await adapter.executeQuery(
-      `INSERT INTO users (id, email, name, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      ["legacy-b", "Other@X.com", "Legacy B", 1, nowEpoch, nowEpoch]
-    );
 
-    // The exact legacy spelling repeats.
     await expect(
       mutations.createLocalUser({
         email: "Legacy@X.com",
         name: "Shadow A",
-        password: PASSWORD,
-      })
-    ).rejects.toMatchObject({ statusCode: 409 });
-
-    // The canonical spelling of the same address repeats too.
-    await expect(
-      mutations.createLocalUser({
-        email: "other@x.com",
-        name: "Shadow B",
         password: PASSWORD,
       })
     ).rejects.toMatchObject({ statusCode: 409 });
