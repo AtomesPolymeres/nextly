@@ -916,7 +916,10 @@ export class UserQueryService extends BaseService {
           })
           .from(users)
           .leftJoin(userExtTable, eq(users.id, userExtTable.user_id))
-          .where(inArray(users.email, lookupEmails))
+          // The selected row's id, not the lookup spellings: with case twins
+          // on an upgraded database the spellings match both accounts, and
+          // the fields must be the selected account's own.
+          .where(eq(users.id, row.id))
           .limit(1);
 
         if (extRows.length > 0) {

@@ -656,18 +656,22 @@ export class AuthService extends BaseService {
       const rawToken = randomBytes(32).toString("hex");
       const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
+      // The token is keyed to the matched account's STORED spelling:
+      // verifyEmail updates the user by an exact email = identifier match,
+      // so a legacy mixed-case row keyed by its canonical form would verify
+      // zero rows and still report success.
+      const identifier = user.email;
+
       await this.db
         .delete(this.tables.emailVerificationTokens)
-        .where(
-          eq(this.tables.emailVerificationTokens.identifier, normalizedEmail)
-        );
+        .where(eq(this.tables.emailVerificationTokens.identifier, identifier));
 
       const expiresAt = new Date(
         Date.now() + this.TOKEN_EXPIRY_HOURS * 60 * 60 * 1000
       );
 
       await this.db.insert(this.tables.emailVerificationTokens).values({
-        identifier: normalizedEmail,
+        identifier,
         tokenHash,
         expires: expiresAt,
       });

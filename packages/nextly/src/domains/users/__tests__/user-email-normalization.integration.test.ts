@@ -42,6 +42,7 @@ import {
   users as usersSqlite,
 } from "../../../schemas/users/sqlite";
 import { nextlyEvents as eventsSqlite } from "../../../schemas/webhooks/sqlite";
+import { AuthService } from "../../auth/services/auth-service";
 import { UserMutationService } from "../services/user-mutation-service";
 import { UserQueryService } from "../services/user-query-service";
 
@@ -234,5 +235,40 @@ describe("user email normalization across create, duplicate check and lookup", (
     // Positive control: the exact stored spelling still matches.
     const byExact = await queries.findByEmail("probe@test.local");
     expect(String(byExact?.id)).toBe("probe");
+  });
+
+  it("verification tokens issued for a legacy row verify that row", async () => {
+    // The token is keyed to the matched account's stored spelling: for a
+    // legacy mixed-case row, verifyEmail updates users by an exact
+    // email = identifier match, so a normalized identifier would verify
+    // zero rows while still reporting success.
+    const nowEpoch = Math.floor(Date.now() / 1000);
+    await adapter.executeQuery(
+      `INSERT INTO users (id, email, name, is_active, email_verified, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        "legacy-token",
+        "Tokenizer@X.com",
+        "Legacy Token",
+        1,
+        null,
+        nowEpoch,
+        nowEpoch,
+      ]
+    );
+
+    const auth = new AuthService(adapter, silentLogger);
+    const { token } = await auth.generateEmailVerificationToken(
+      "Tokenizer@X.com",
+      { disableEmail: true }
+    );
+    expect(token).toBeTruthy();
+
+    await auth.verifyEmail(token as string);
+
+    const rows = await adapter.executeQuery<{
+      email_verified: number | null;
+    }>("SELECT email_verified FROM users WHERE id = ?", ["legacy-token"]);
+    expect(rows[0]?.email_verified).not.toBeNull();
   });
 });
