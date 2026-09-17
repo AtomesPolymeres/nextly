@@ -22,7 +22,7 @@ import { randomUUID } from "crypto";
 
 import type { DrizzleAdapter } from "@nextlyhq/adapter-drizzle";
 import type { Table, Column } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { hashPassword } from "@nextly/auth/password";
 import {
@@ -677,6 +677,14 @@ export class UserMutationService extends BaseService {
         });
       }
 
+      // The create schema already validated the address and normalized it
+      // (EmailSchema lowercases and trims). From here on the normalized value
+      // is the only spelling this method stores or compares: the login lookup
+      // finds accounts with a case-sensitive `=` on that same spelling, so
+      // carrying the raw input forward would save an address no sign-in can
+      // ever match.
+      const email = validation.data.email;
+
       const { users } = this.tables;
 
       // 🔴 Derive the hash BEFORE the duplicate lookup, and keep it that way.
@@ -718,13 +726,20 @@ export class UserMutationService extends BaseService {
       // Account-enumeration sensitive: the public message stays generic
       // ("Resource already exists.") via NextlyError.duplicate; the email and
       // entity travel only through logContext.
-      const existingUser = await this.db.query.users.findFirst({
-        where: { email: requireFilterValue(userData.email, "email") },
-        columns: { id: true, email: true },
-      });
-      if (existingUser) {
+      //
+      // Both spellings are probed in one OR. The canonical form covers this
+      // and every future write; the caller's exact input is the only spelling
+      // legacy rows (written before normalization) are reachable by on a
+      // case-sensitive `=` — the unique index would otherwise admit a second
+      // account for the same address.
+      const existingUser = await (this.db as unknown as DrizzleChain)
+        .select({ id: users.id, email: users.email })
+        .from(users)
+        .where(inArray(users.email, [email, userData.email]))
+        .limit(1);
+      if (existingUser.length > 0) {
         throw NextlyError.duplicate({
-          logContext: { entity: "user", email: userData.email },
+          logContext: { entity: "user", email },
         });
       }
 
@@ -782,7 +797,7 @@ export class UserMutationService extends BaseService {
       const newUserId = randomUUID();
       const values: UserInsertData = {
         id: newUserId,
-        email: userData.email,
+        email,
         name: userData.name,
         passwordHash,
         // An invited account has not proven its address yet; accepting the
@@ -845,7 +860,7 @@ export class UserMutationService extends BaseService {
             resource: { kind: "user", id: newUserId },
             data: {
               id: newUserId,
-              email: userData.email,
+              email,
               name: userData.name ?? null,
             },
             fields: [],
@@ -931,7 +946,7 @@ export class UserMutationService extends BaseService {
 
       // Fetch created user
       const user = await this.db.query.users.findFirst({
-        where: { email: requireFilterValue(userData.email, "email") },
+        where: { email: requireFilterValue(email, "email") },
         columns: {
           id: true,
           email: true,
@@ -950,7 +965,7 @@ export class UserMutationService extends BaseService {
         throw NextlyError.internal({
           logContext: {
             reason: "post-insert-readback-missing",
-            email: userData.email,
+            email,
           },
         });
       }

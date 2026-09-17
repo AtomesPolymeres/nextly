@@ -25,6 +25,7 @@ import type { Logger } from "../../../services/shared";
 import { affectedRowCount } from "../../../shared/lib/affected-row-count";
 import { requireFilterValue } from "../../../shared/lib/require-filter-value";
 import { auditReason } from "../../audit/audit-reasons";
+import { UserQueryService } from "../../users/services/user-query-service";
 import { generateInviteTokenValue, hashInviteToken } from "../lib/invite-token";
 
 // Re-exported: this module owned `affectedRowCount` before it was shared, and
@@ -625,15 +626,14 @@ export class AuthService extends BaseService {
     email: string,
     options?: { redirectPath?: string; disableEmail?: boolean }
   ): Promise<{ token?: string }> {
+    // The account selection is the canonical resolver's — exact spelling
+    // first, then the normalized form — so a resend verifies the same
+    // account a lookup names, and any future change to how legacy rows are
+    // resolved lands in one place.
+    const queryService = new UserQueryService(this.adapter, this.logger);
+
     try {
-      const user = await this.db.query.users.findFirst({
-        where: { email: requireFilterValue(email, "email") },
-        columns: {
-          id: true,
-          email: true,
-          name: true,
-        },
-      });
+      const user = await queryService.findByEmail(email);
 
       if (!user) {
         // Silent success — never reveal whether the email is registered.
@@ -643,16 +643,22 @@ export class AuthService extends BaseService {
       const rawToken = randomBytes(32).toString("hex");
       const tokenHash = createHash("sha256").update(rawToken).digest("hex");
 
+      // The token is keyed to the matched account's STORED spelling:
+      // verifyEmail updates the user by an exact email = identifier match,
+      // so a legacy mixed-case row keyed by its canonical form would verify
+      // zero rows and still report success.
+      const identifier = user.email;
+
       await this.db
         .delete(this.tables.emailVerificationTokens)
-        .where(eq(this.tables.emailVerificationTokens.identifier, email));
+        .where(eq(this.tables.emailVerificationTokens.identifier, identifier));
 
       const expiresAt = new Date(
         Date.now() + this.TOKEN_EXPIRY_HOURS * 60 * 60 * 1000
       );
 
       await this.db.insert(this.tables.emailVerificationTokens).values({
-        identifier: email,
+        identifier,
         tokenHash,
         expires: expiresAt,
       });
@@ -701,6 +707,9 @@ export class AuthService extends BaseService {
       );
       return this.undeliveredTokenFallback(rawToken);
     } catch (error) {
+      // A malformed address surfaces as the resolver's VALIDATION_ERROR, not
+      // as a database failure dressed up as a 500.
+      if (NextlyError.is(error)) throw error;
       // Normalise raw driver errors so the DB kind is preserved.
       throw NextlyError.fromDatabaseError(toDbError(this.dialect, error));
     }
