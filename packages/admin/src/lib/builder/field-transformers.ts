@@ -22,13 +22,20 @@ export function generateFieldId(): string {
 
 /**
  * Convert a string to snake_case.
+ *
+ * A run of anything that is not a letter or a digit — spaces, punctuation,
+ * symbols — collapses to ONE underscore, and nothing dangles at either end.
+ * The same rule the builder's other name/slug derivations already apply
+ * (`toKebabName` below, `startingFieldName`): translating the input
+ * character-by-character instead would turn "phone no." into "phone_no_" and
+ * let a punctuation-only label mint a name of pure underscores.
  */
 export function toSnakeName(s: string): string {
   return String(s || "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "_");
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 export function toKebabName(s: string): string {

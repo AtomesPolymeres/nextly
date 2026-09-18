@@ -117,6 +117,16 @@ describe("GeneralTab -- PR E1 Label-first + Name auto-derive", () => {
     expect(last.name).toBe("blog_post");
   });
 
+  it("derives punctuation in the Label away rather than underscoring it", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<Controlled initial={blank} onChange={onChange} />);
+    await user.type(screen.getByLabelText(/^Label$/), "phone no.");
+    const last = onChange.mock.lastCall?.[0] as BuilderField;
+    expect(last.label).toBe("phone no.");
+    expect(last.name).toBe("phone_no");
+  });
+
   it("stops auto-deriving Name once the user manually edits Name", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
