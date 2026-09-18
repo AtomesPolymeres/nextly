@@ -87,4 +87,28 @@ describe("renaming a field from its card", () => {
     expect(screen.getByLabelText(/Field Name/i)).toBe(input);
     expect(document.activeElement).toBe(input);
   });
+
+  it("keeps the input mounted when the name is cleared mid-rename", () => {
+    // Select-all-and-delete is how a rename usually starts, and the empty
+    // string is a legitimate intermediate value: selection must follow the
+    // rename through it, or the card collapses (the editor unmounts) and
+    // focus is lost — the very defect this list was rekeyed to remove.
+    view();
+
+    const toggle = screen
+      .getAllByRole("button", { name: /email/i, expanded: false })
+      .find(button => !button.hasAttribute("aria-haspopup"));
+    if (!toggle) throw new Error("field card header toggle not found");
+    fireEvent.click(toggle);
+    const input = screen.getByLabelText(/Field Name/i) as HTMLInputElement;
+    input.focus();
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(screen.queryByLabelText(/Field Name/i)).toBe(input);
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.change(input, { target: { value: "sms" } });
+    expect(screen.getByLabelText(/Field Name/i)).toBe(input);
+    expect(input).toHaveValue("sms");
+  });
 });

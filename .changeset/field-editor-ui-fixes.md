@@ -38,10 +38,15 @@ its card, and the input's focus, in place.
 
 The Schema Builder translated a Label into its auto-derived Name one
 character at a time: every space, apostrophe, period or colon became its own
-underscore, so "phone no." named the field "phone*no*". The derivation now
-follows the formatting rule the builder's other name and slug derivations
-already apply — a run of anything that is not a letter or a digit collapses
-to one underscore, and nothing dangles at either end.
+underscore, so a label of "phone no." named the field `phone_no_`. The
+derivation now follows the formatting rule the builder's other name and slug
+derivations already apply — a run of anything that is not a letter or a digit
+collapses to one underscore, and nothing dangles at either end. The rule is
+for labels only: a stored name the server already accepts passes through
+every save untouched (its legal underscore runs and trailing underscore are
+identity, not noise), a name minted under the previous rule still follows its
+label, and renaming a form field keeps the card open through the empty
+intermediate value of a clear-and-retype.
 
 A Code field's content could overflow its box: field rows lay fields on
 proportional grid tracks, and a bare `Nfr` track honors an item's

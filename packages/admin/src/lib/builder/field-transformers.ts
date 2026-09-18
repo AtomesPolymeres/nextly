@@ -38,6 +38,25 @@ export function toSnakeName(s: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
+/**
+ * The derivation `toSnakeName` applied BEFORE punctuation runs collapsed —
+ * every non-alphanumeric character became its own underscore.
+ *
+ * Kept frozen, and used ONLY to recognize names it minted: a field whose
+ * label was "phone no." carries the stored name "phone_no_", and without
+ * recognizing that form, the first label edit after the rule change would
+ * read the name as manually overridden and stop following the label. New
+ * names are never derived with it — `toSnakeName` above is the one
+ * derivation.
+ */
+export function legacySnakeName(s: string): string {
+  return String(s || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "_");
+}
+
 export function toKebabName(s: string): string {
   return String(s || "")
     .trim()
@@ -209,12 +228,28 @@ export function reorderNestedFields(
 }
 
 /**
+ * A field name the server accepts, verbatim: the pattern every field
+ * identifier must match on the wire (`^[a-z][a-z0-9_]*$` — a leading letter,
+ * then letters, digits or underscores, runs and trailing underscores
+ * included). Mirrors the contract the server validates against rather than
+ * inventing a local rule for what "stored" means.
+ */
+const STORED_FIELD_NAME = /^[a-z][a-z0-9_]*$/;
+
+/**
  * Convert BuilderField (UI) to FieldDefinition (API payload).
  * Handles nested fields, blocks, and all field-type-specific properties.
  */
 export function convertToFieldDefinition(field: BuilderField): FieldDefinition {
   const definition: FieldDefinition = {
-    name: toSnakeName(field.name),
+    // A stored name is the field's identity, not a label: one already legal
+    // passes through untouched, because re-deriving it would collapse its
+    // legal `__` runs or trim a legal trailing `_` and silently rename the
+    // column and API key during an unrelated save. The derivation is only
+    // for a name the server would reject anyway.
+    name: STORED_FIELD_NAME.test(field.name)
+      ? field.name
+      : toSnakeName(field.name),
     label: field.label || field.name,
     type: field.type,
     required: Boolean(field.validation?.required),

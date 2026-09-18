@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toSnakeName } from "./field-transformers";
+import { convertToFieldDefinition, toSnakeName } from "./field-transformers";
 
 /**
  * The rule an auto-derived Name follows when a Label carries punctuation.
@@ -37,5 +37,40 @@ describe("toSnakeName", () => {
 
   it("reduces a punctuation-only label to nothing, not a row of underscores", () => {
     expect(toSnakeName("?!")).toBe("");
+  });
+});
+
+describe("the save path (convertToFieldDefinition)", () => {
+  /**
+   * A stored name is not a label: it is the field's identity, already
+   * accepted by the server as `^[a-z][a-z0-9_]*$`, and that pattern allows
+   * underscore runs and a trailing underscore. Re-deriving such a name would
+   * collapse `line__item` to `line_item` or trim `legacy_` to `legacy` during
+   * an unrelated save — silently renaming a database column and API key. The
+   * derivation is for labels; a legal name passes through verbatim, and only
+   * a name the server would reject is re-derived.
+   */
+  const base = {
+    id: "f-1",
+    label: "Line Item",
+    type: "text",
+    validation: {},
+  } as const;
+
+  it("keeps a legal stored name verbatim during an unrelated save", () => {
+    expect(convertToFieldDefinition({ ...base, name: "line__item" }).name).toBe(
+      "line__item"
+    );
+    expect(convertToFieldDefinition({ ...base, name: "legacy_" }).name).toBe(
+      "legacy_"
+    );
+  });
+
+  it("still re-derives a name the server would reject", () => {
+    // The control: preservation is reserved for legal names — an illegal one
+    // must not pass through just because the guard exists.
+    expect(convertToFieldDefinition({ ...base, name: "My Field!" }).name).toBe(
+      "my_field"
+    );
   });
 });
