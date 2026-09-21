@@ -100,11 +100,31 @@ describe("BuilderToolbar", () => {
       />
     );
     // The legacy first-letter tile rendered the first character of the
-    // icon name in a square. With it removed, the standalone "H" or "F"
-    // letter shouldn't appear before the breadcrumb.
-    const breadcrumb = screen.getByText(/field groups/i);
-    const sibling = breadcrumb.previousSibling;
-    expect(sibling).toBeNull();
+    // icon name in a square. With it removed, no standalone letter appears
+    // beside the breadcrumb — the crumb's chevron is decoration INSIDE the
+    // back link, not a tile.
+    expect(screen.queryByText(/^[HF]$/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /back to field groups/i })
+    ).toBeInTheDocument();
+  });
+
+  it("renders the crumb as a link back to the kind's builder list", () => {
+    // Builder pages render standalone, so the crumb is the only way back to
+    // the list — it must be a link with the list as its destination, not a
+    // label.
+    render(
+      <BuilderToolbar
+        config={collectionConfig}
+        name="Posts"
+        unsavedCount={0}
+        onOpenSettings={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByRole("link", { name: /back to collections/i })
+    ).toHaveAttribute("href", "/admin/builder/collections");
   });
 
   it("disables Save when no unsaved changes", () => {
