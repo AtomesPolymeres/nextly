@@ -96,10 +96,12 @@ export function FieldEditorSheet({
     <Sheet open={open} onOpenChange={next => !next && onCancel()}>
       <SheetContent
         side="right"
-        // `w-full max-w-[560px]`, not a fixed 560px: on a screen narrower than
-        // the sheet, a right-anchored fixed width pushes its LEFT edge off
-        // screen and clips the labels. Full width below the cap, capped above.
-        className="w-full max-w-[560px] p-0 flex flex-col"
+        // `w-full sm:max-w-[560px]`: full width below sm so a phone never
+        // clips the sheet's left edge, and the 560px cap re-stated in the
+        // SAME sm variant group as SheetContent's `sm:max-w-sm` default —
+        // an unqualified max-w would lose the cascade at sm+ and shrink
+        // the desktop editor to 24rem.
+        className="w-full sm:max-w-[560px] p-0 flex flex-col"
       >
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2 justify-between">
