@@ -13,7 +13,7 @@
 import { Input, Label, Switch, Textarea } from "@nextlyhq/ui";
 import { isFieldGroupFieldType } from "nextly/field-group-type";
 
-import { legacySnakeName, toSnakeName } from "@admin/lib/builder";
+import { toSnakeName } from "@admin/lib/builder";
 
 import type { BuilderField } from "../types";
 
@@ -87,13 +87,14 @@ export function GeneralTab({ field, readOnly = false, onChange }: Props) {
       onChange({ ...field, label });
       return;
     }
-    // A name counts as auto when it matches what the CURRENT derivation
-    // would mint — or what the pre-collapse derivation minted before the
-    // rule changed, so a stored "phone_no_" keeps following its label
-    // instead of being read as a manual override and stranded.
+    // A name counts as auto when it NORMALIZES to what the label derives
+    // to. Comparing through the one derivation — rather than to the raw
+    // name — also recognizes names minted before the rule changed: a
+    // stored "phone_no_" normalizes to the same "phone_no" its label
+    // derives to, so it keeps following the label instead of being read
+    // as a manual override and stranded.
     const matchesAutoDerivation =
-      toSnakeName(field.label) === field.name ||
-      legacySnakeName(field.label) === field.name;
+      toSnakeName(field.name) === toSnakeName(field.label);
     const isStillAutoName = !field.name || matchesAutoDerivation;
     onChange({
       ...field,

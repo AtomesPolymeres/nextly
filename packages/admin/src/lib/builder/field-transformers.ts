@@ -29,6 +29,11 @@ export function generateFieldId(): string {
  * (`toKebabName` below, `startingFieldName`): translating the input
  * character-by-character instead would turn "phone no." into "phone_no_" and
  * let a punctuation-only label mint a name of pure underscores.
+ *
+ * Derivation and recognition in one: applying it to BOTH sides of a
+ * comparison recognizes names minted before the rule changed (a stored
+ * "phone_no_" normalizes to the same "phone_no" its label derives to),
+ * which is how the editor decides a name is still auto-derived.
  */
 export function toSnakeName(s: string): string {
   return String(s || "")
@@ -36,25 +41,6 @@ export function toSnakeName(s: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
-}
-
-/**
- * The derivation `toSnakeName` applied BEFORE punctuation runs collapsed —
- * every non-alphanumeric character became its own underscore.
- *
- * Kept frozen, and used ONLY to recognize names it minted: a field whose
- * label was "phone no." carries the stored name "phone_no_", and without
- * recognizing that form, the first label edit after the rule change would
- * read the name as manually overridden and stop following the label. New
- * names are never derived with it — `toSnakeName` above is the one
- * derivation.
- */
-export function legacySnakeName(s: string): string {
-  return String(s || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "_");
 }
 
 export function toKebabName(s: string): string {
