@@ -30,17 +30,25 @@ export function generateFieldId(): string {
  * character-by-character instead would turn "phone no." into "phone_no_" and
  * let a punctuation-only label mint a name of pure underscores.
  *
- * Derivation and recognition in one: applying it to BOTH sides of a
- * comparison recognizes names minted before the rule changed (a stored
- * "phone_no_" normalizes to the same "phone_no" its label derives to),
- * which is how the editor decides a name is still auto-derived.
+ * The `"pre-collapse"` mode is that older character-by-character rule, kept
+ * inside this function and used ONLY to recognize names it minted before
+ * the rule changed (a stored "phone_no_" still follows its label) — never
+ * to derive new names. Recognition compares EXACT outputs of the two modes
+ * against a stored name; normalizing the stored name itself would also
+ * capture legal manual names like "line__item", whose runs the save path
+ * deliberately preserves as identity.
  */
-export function toSnakeName(s: string): string {
-  return String(s || "")
+export function toSnakeName(
+  s: string,
+  mode: "current" | "pre-collapse" = "current"
+): string {
+  const lowercased = String(s || "")
     .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+    .toLowerCase();
+  if (mode === "pre-collapse") {
+    return lowercased.replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "_");
+  }
+  return lowercased.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 export function toKebabName(s: string): string {

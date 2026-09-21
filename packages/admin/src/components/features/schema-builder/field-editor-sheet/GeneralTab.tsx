@@ -87,14 +87,16 @@ export function GeneralTab({ field, readOnly = false, onChange }: Props) {
       onChange({ ...field, label });
       return;
     }
-    // A name counts as auto when it NORMALIZES to what the label derives
-    // to. Comparing through the one derivation — rather than to the raw
-    // name — also recognizes names minted before the rule changed: a
-    // stored "phone_no_" normalizes to the same "phone_no" its label
-    // derives to, so it keeps following the label instead of being read
-    // as a manual override and stranded.
+    // A name counts as auto when it EXACTLY matches what the current
+    // derivation would mint — or what the pre-collapse rule minted before
+    // it changed, so a stored "phone_no_" keeps following its label instead
+    // of being read as a manual override and stranded. The comparison is
+    // exact on both arms: normalizing the stored name would also capture
+    // legal manual names like "line__item", whose runs the save path
+    // preserves as identity, and rewrite them on a label edit.
     const matchesAutoDerivation =
-      toSnakeName(field.name) === toSnakeName(field.label);
+      field.name === toSnakeName(field.label) ||
+      field.name === toSnakeName(field.label, "pre-collapse");
     const isStillAutoName = !field.name || matchesAutoDerivation;
     onChange({
       ...field,

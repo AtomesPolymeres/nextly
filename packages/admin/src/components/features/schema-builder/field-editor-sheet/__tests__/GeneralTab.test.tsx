@@ -147,6 +147,26 @@ describe("GeneralTab -- PR E1 Label-first + Name auto-derive", () => {
     expect(last.name).toBe("phone_no");
   });
 
+  it("does not treat a manual repeated-underscore name as automatic", async () => {
+    // `line__item` is a legal name the save path preserves verbatim as the
+    // field's identity; the label "Line Item" derives to `line_item`, and a
+    // comparison through normalization would call the two equal and rewrite
+    // the manual name on the first label edit. Recognition must match the
+    // derivations EXACTLY, never a normalized stored name.
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const seeded: BuilderField = {
+      ...blank,
+      label: "Line Item",
+      name: "line__item",
+    };
+    render(<Controlled initial={seeded} onChange={onChange} />);
+    await user.type(screen.getByLabelText(/^Label$/), "s");
+    const last = onChange.mock.lastCall?.[0] as BuilderField;
+    expect(last.label).toBe("Line Items");
+    expect(last.name).toBe("line__item");
+  });
+
   it("stops auto-deriving Name once the user manually edits Name", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
