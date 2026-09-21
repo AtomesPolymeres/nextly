@@ -59,6 +59,21 @@ export function BuilderToolbar({
     ? `This ${KIND_NOUN[config.kind]} is managed in code. Update its definition in code to make changes.`
     : undefined;
 
+  // The crumb is the page's only exit, and no builder page mounts a
+  // navigation guard — a click with unsaved fields would discard them
+  // silently. Blocked with a confirm while dirty, same pattern as the
+  // settings image-sizes removal.
+  const handleCrumbClick = (e: { preventDefault: () => void }) => {
+    if (
+      unsavedCount > 0 &&
+      !window.confirm(
+        `You have unsaved changes to this ${KIND_NOUN[config.kind]}. Leave and discard them?`
+      )
+    ) {
+      e.preventDefault();
+    }
+  };
+
   return (
     <div className="flex items-center gap-3 px-6 py-3 border-b border-border sticky top-0 z-30 bg-background">
       <div className="flex items-center gap-3 min-w-0">
@@ -67,6 +82,7 @@ export function BuilderToolbar({
             the list — plain text left the reader stranded after saving. */}
         <Link
           href={KIND_LIST_ROUTE[config.kind]}
+          onClick={handleCrumbClick}
           className="flex items-center gap-0.5 min-w-0 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           aria-label={`Back to ${KIND_BREADCRUMB[config.kind]}`}
         >

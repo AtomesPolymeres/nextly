@@ -614,7 +614,12 @@ function Contributions({ plugin }: { plugin: PluginMetadata }) {
             </div>
             <ul className="space-y-1.5">
               {group.items.map(item => (
-                <li key={`${item.primary}-${item.secondary ?? ""}`}>
+                <li
+                  key={`${item.primary}-${item.secondary ?? ""}`}
+                  // break-all, same as the dormant-routes card: a long route
+                  // token must wrap inside the card, not stretch it.
+                  className="break-all"
+                >
                   {item.href ? (
                     <Link
                       href={item.href}

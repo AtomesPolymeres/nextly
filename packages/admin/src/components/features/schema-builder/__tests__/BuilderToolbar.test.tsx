@@ -3,6 +3,7 @@
 // - No icon tile, no source badge, no Hooks button, no unsaved-count
 //   badge. Save schema disabled when nothing dirty and when locked.
 // - Locked state surfaces via the disabled buttons' tooltip text.
+import { fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -125,6 +126,38 @@ describe("BuilderToolbar", () => {
     expect(
       screen.getByRole("link", { name: /back to collections/i })
     ).toHaveAttribute("href", "/admin/builder/collections");
+  });
+
+  it("asks before leaving with unsaved changes, and not when clean", () => {
+    // No builder page mounts a navigation guard, so the crumb — the page's
+    // only exit — must stand in front of unsaved work itself.
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { rerender } = render(
+      <BuilderToolbar
+        config={collectionConfig}
+        name="Posts"
+        unsavedCount={2}
+        onOpenSettings={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("link", { name: /back to collections/i }));
+    expect(confirmSpy).toHaveBeenCalledOnce();
+    expect(confirmSpy.mock.calls[0][0]).toMatch(/unsaved changes/i);
+
+    confirmSpy.mockClear();
+    rerender(
+      <BuilderToolbar
+        config={collectionConfig}
+        name="Posts"
+        unsavedCount={0}
+        onOpenSettings={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole("link", { name: /back to collections/i }));
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
   });
 
   it("disables Save when no unsaved changes", () => {

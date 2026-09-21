@@ -136,4 +136,18 @@ describe("AdvancedTab -- unique disabled when nested (PR E3)", () => {
       screen.getByText(/localization is set by the fields inside it/i)
     ).toBeInTheDocument();
   });
+
+  it("reads a legacy localized flag on a component reference as OFF", () => {
+    // A save from before the gate could carry `localized: true` on the
+    // reference. The switch is disabled, so displaying that stale flag would
+    // present dead metadata as an active setting.
+    render(
+      <Controlled
+        initial={{ ...f, type: "component", advanced: { localized: true } }}
+      />
+    );
+    expect(
+      screen.getByRole("switch", { name: /^localized$/i })
+    ).not.toBeChecked();
+  });
 });

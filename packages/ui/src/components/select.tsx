@@ -120,6 +120,10 @@ function SelectContent({
 
   return (
     <SelectPrimitive.Portal container={portalContainer}>
+      {/* The 20rem fallback in max-h exists because the Radix variable is only
+          set under popper positioning: where it is absent the clamp would
+          resolve to nothing and a long option list (timezones) renders
+          unbounded, overflowing the viewport. */}
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
