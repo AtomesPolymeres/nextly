@@ -125,4 +125,15 @@ describe("AdvancedTab -- unique disabled when nested (PR E3)", () => {
     );
     expect(screen.getByRole("switch", { name: /^unique$/i })).toBeDisabled();
   });
+
+  it("disables Localized on a component reference and says where to localize instead", () => {
+    // A component reference holds no value of its own, so the flag was a
+    // silent no-op that read as Apply being broken. The switch must not
+    // offer what storage cannot honour.
+    render(<Controlled initial={{ ...f, type: "component" }} />);
+    expect(screen.getByRole("switch", { name: /^localized$/i })).toBeDisabled();
+    expect(
+      screen.getByText(/localization is set by the fields inside it/i)
+    ).toBeInTheDocument();
+  });
 });

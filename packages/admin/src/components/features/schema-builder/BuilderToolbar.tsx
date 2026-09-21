@@ -5,8 +5,11 @@
 // stays disabled, but Settings stays enabled so the config can be inspected
 // read-only.
 import { Badge, Button } from "@nextlyhq/ui";
+import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
 
 import { Lock, Settings } from "@admin/components/icons";
+import { ROUTES } from "@admin/constants/routes";
 
 import type { BuilderConfig } from "./builder-config";
 
@@ -26,6 +29,13 @@ const KIND_BREADCRUMB: Record<BuilderConfig["kind"], string> = {
   collection: "Collections",
   single: "Singles",
   "field-group": "Field Groups",
+};
+
+/** Where the breadcrumb leads — the builder list this entity was opened from. */
+const KIND_LIST_ROUTE: Record<BuilderConfig["kind"], string> = {
+  collection: ROUTES.BUILDER_COLLECTIONS,
+  single: ROUTES.BUILDER_SINGLES,
+  "field-group": ROUTES.BUILDER_FIELD_GROUPS,
 };
 
 // Singular wording for prose. The kind is a slug, so interpolating it directly
@@ -52,10 +62,20 @@ export function BuilderToolbar({
   return (
     <div className="flex items-center gap-3 px-6 py-3 border-b border-border sticky top-0 z-30 bg-background">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="min-w-0">
-          <div className="text-xs text-muted-foreground truncate">
+        {/* The crumb is a LINK, not a label: builder pages render standalone
+            (no dashboard sidebar), so on a phone this is the only way back to
+            the list — plain text left the reader stranded after saving. */}
+        <Link
+          href={KIND_LIST_ROUTE[config.kind]}
+          className="flex items-center gap-0.5 min-w-0 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label={`Back to ${KIND_BREADCRUMB[config.kind]}`}
+        >
+          <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="text-xs truncate">
             {KIND_BREADCRUMB[config.kind]} /
-          </div>
+          </span>
+        </Link>
+        <div className="min-w-0">
           <div className="text-xl font-semibold tracking-tight truncate">
             {name}
           </div>

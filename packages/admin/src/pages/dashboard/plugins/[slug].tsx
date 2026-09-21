@@ -598,7 +598,10 @@ function Contributions({ plugin }: { plugin: PluginMetadata }) {
         {groups.map(group => (
           <div
             key={group.key}
-            className="rounded-lg border border-border bg-card p-4"
+            // min-w-0: a grid item defaults to min-width:auto, so a long
+            // mono route string would refuse to shrink and stretch this
+            // card past its track, painting text over the page edge.
+            className="min-w-0 rounded-lg border border-border bg-card p-4"
           >
             <div className="mb-2 flex items-center gap-2">
               <group.icon className="h-4 w-4 text-muted-foreground" />
@@ -673,7 +676,9 @@ function WhenEnabled({ plugin }: { plugin: PluginMetadata }) {
         in your Nextly config and restart the app to serve these — editing the
         config alone does not mount them.
       </p>
-      <div className="rounded-lg border border-dashed border-border bg-card p-4">
+      {/* min-w-0 for the same reason as the groups grid above: the item must
+          be allowed to shrink below the longest route's intrinsic width. */}
+      <div className="min-w-0 rounded-lg border border-dashed border-border bg-card p-4">
         <div className="mb-2 flex items-center gap-2">
           <Route className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-medium text-foreground">API routes</h3>
@@ -685,7 +690,10 @@ function WhenEnabled({ plugin }: { plugin: PluginMetadata }) {
           {routes.map(r => (
             <li
               key={`${r.method}-${r.path}`}
-              className="break-words font-mono text-sm text-foreground"
+              // break-all, not break-words: a URL is one unbroken token, and
+              // overflow-wrap only breaks it once the line already overflows
+              // — break-all wraps it at any character inside the card.
+              className="break-all font-mono text-sm text-foreground"
             >
               {`${r.method} ${API_PATH_PREFIX}${r.fullPath}`}
             </li>

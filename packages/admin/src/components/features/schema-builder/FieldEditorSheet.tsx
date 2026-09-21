@@ -96,7 +96,10 @@ export function FieldEditorSheet({
     <Sheet open={open} onOpenChange={next => !next && onCancel()}>
       <SheetContent
         side="right"
-        className="w-[560px] sm:max-w-[560px] p-0 flex flex-col"
+        // `w-full max-w-[560px]`, not a fixed 560px: on a screen narrower than
+        // the sheet, a right-anchored fixed width pushes its LEFT edge off
+        // screen and clips the labels. Full width below the cap, capped above.
+        className="w-full max-w-[560px] p-0 flex flex-col"
       >
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2 justify-between">
