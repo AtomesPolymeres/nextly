@@ -7,6 +7,32 @@ it runs inside their own Next.js app with their own database (Postgres, MySQL,
 or SQLite via Drizzle ORM). This repository is the pnpm + Turborepo monorepo
 for all published packages. Status: alpha, all packages version in lockstep.
 
+## Skills, and when to load one
+
+Procedures live in `.claude/skills/` rather than here, because a procedure
+needed once per task should not occupy context in every session. This table is
+the router: Claude selects a skill from its description, and the table is what
+survives a description that underperforms. Load the skill BEFORE the act, not
+after it goes wrong.
+
+| Load this                     | When you are about to                                   |
+| ----------------------------- | ------------------------------------------------------- |
+| `testing-evidence`            | add, change, delete or judge a test                     |
+| `writing-integration-tests`   | write or debug a `*.integration.test.ts`                |
+| `adding-a-field-type`         | add a field type to the catalog                         |
+| `derived-checks`              | write or review a check, gate, probe or derived view    |
+| `auditing-an-instrument`      | act on a clean, empty or surprising result from a check |
+| `reading-a-ci-verdict`        | read CI, check runs or a reviewer verdict               |
+| `reviewing-a-pr`              | review a PR or answer review-bot findings               |
+| `verifying-merged-work`       | confirm a change landed, or judge a red after a rebase  |
+| `recovering-a-clobbered-file` | recover a file a whole-file write may have replaced     |
+| `release-and-changesets`      | touch a changeset, a release or a new package name      |
+
+Two rules stay loaded in every session (`.claude/rules/`) because the failures
+they prevent arrive before any file has been read: `whole-file-writes` (a shell
+redirect reads nothing, so there is no read for a path-scoped rule to trigger
+on) and the path-scoped `integration-tests`.
+
 ## Repository map
 
 - `packages/nextly` - core: config surface, Direct API, REST dispatcher, CLI,
@@ -77,6 +103,77 @@ Before editing a package, read its README.md and check for a nested AGENTS.md.
 - There is no `nextly dev` CLI command by design: user apps run plain
   `next dev`, and schema changes apply in-process via the HMR listener.
 
+## Working in several checkouts at once
+
+Never work a PR branch in the shared checkout: another session switching
+branches underneath you removes files mid-command. Use a worktree, and give it
+a SLOT, because three things in this repository are per-machine rather than
+per-checkout.
+
+```
+pnpm worktree new <branch> [--from <ref>]   # create, claim a slot, report it
+pnpm worktree list                          # who holds which slot
+pnpm worktree remove <branch|path>          # give the slot, ports and databases back
+pnpm worktree provision                     # create this slot's databases, after docker start
+pnpm worktree sweep                         # release slots whose databases outlived them
+pnpm worktree env --slot <n>                # the exports, for a plain shell
+```
+
+**Removal is not destructive by default.** It refuses a checkout with
+uncommitted work and keeps a branch git will not fast-forward delete; `--force`
+opts into losing both. It matches the target by EXACT branch or path, never by
+prefix, because a near-miss there removes somebody else's checkout.
+
+**Remove it when you are finished.** Slots are small integers and an abandoned
+checkout holds its ports and its databases indefinitely. `remove` drops the
+slot's databases before it removes the checkout, so a later `new` cannot take
+the slot while the old databases still hold another run's tables. It never
+touches slot 0, which is the shared default.
+
+A slot owns a contiguous BLOCK of ports and one database. Slot 0 is the
+documented defaults — `PORT` 3000, `E2E_PORT` 3100, `E2E_PROD_PORT` 3101 — and
+every allocated slot takes ten consecutive ports from 3200 upward, so no two
+slots and no slot and default can ever meet. Independent per-port series cannot
+promise that: at 3000 + 10n and 3100 + 10n, slot 10's playground port IS slot
+0's e2e port. Its database is `nextly_test`, then `nextly_test_w<n>`.
+
+The slot is claimed by creating a file under the shared `.git` directory with
+an exclusive create, so two agents running `new` at once cannot be given the
+same number. It writes the environment into that worktree's
+`.claude/settings.local.json`, which is gitignored and per-checkout, so a
+Claude Code session started there picks them up with no further setup. **Slot 0
+is the documented defaults**, so a checkout that never runs this is unchanged.
+
+The two port collisions are obvious. The third is not, and it fails as a flaky
+test rather than as a collision: test-owned tables get a random per-file prefix,
+but Nextly's SYSTEM tables have fixed names (`nextly_schema_events` and its
+neighbours) and cannot be prefixed. Within one run `fileParallelism: false`
+handles that. Across two worktrees pointed at the same `nextly_test` it is not
+handled at all — the second run drops and recreates a system table the first is
+still using. Hence a separate DATABASE per slot rather than a prefix.
+
+The CONTAINERS stay shared. They set a fixed `container_name`, so exactly one
+compose project can own them and a second worktree bringing up its own fails on
+the taken names. `pnpm worktree new` creates its database inside whichever test
+containers are RUNNING and says which it skipped; run `pnpm worktree provision`
+in that checkout once they are up. A create that fails against a container that
+is up is an error rather than a skip — the integration lanes self-skip when they
+cannot connect, so a missing database would otherwise read as a passing run.
+
+If a removal cannot drop its databases, the slot is RESERVED rather than
+released, and `pnpm worktree list` says so. Reissuing it would hand the next
+checkout another run's fixed-name system tables. `pnpm worktree sweep` drops
+them and releases the slot once the containers are back.
+
+`NEXTLY_TEST_DB` carries a database NAME, never a URL: Postgres 15 is on 5434
+and Postgres 17 on 5435, so a single `TEST_POSTGRES_URL` in the environment
+would point the `:postgres15` lane at the 17 container and report a pass for a
+version it never ran against.
+
+One more shared thing the slot does NOT cover: `git stash` is per-clone, not
+per-worktree, so a stash pushed in one checkout is visible — and poppable — in
+every other. Prefer a branch commit to a stash when several sessions are live.
+
 ## Build and test (read this before running anything)
 
 - `pnpm build` builds all packages (turbo, dependency order).
@@ -135,7 +232,7 @@ Before editing a package, read its README.md and check for a nested AGENTS.md.
   rebuilding fixes those. If the error survives a successful build of that
   package AND its dependencies — the `<pkg>...` form above, not `^...` — it is a
   real resolution defect — see
-  `.claude/rules/verifying-merged-work.md`, which says to check what `main`
+  the `verifying-merged-work` skill, which says to check what `main`
   changed before calling any of this environmental.
 
   **A stale or missing sibling `dist` does not only produce `no-unresolved`.**
@@ -195,76 +292,13 @@ Before editing a package, read its README.md and check for a nested AGENTS.md.
 - Some unit suites have a known pre-existing failing baseline. NEVER add to
   it: run the tests for the area you touch before and after your change, and
   fix any new failure you introduce.
-- A test is only evidence once you have seen it FAIL for the intended reason.
-  Break the code, confirm the intended test fails, restore. After changing a
-  test, re-run its break: a fix to the test is a change to the experiment.
-  What counts as the intended failure depends on when the test runs:
-  - A RUNTIME test that stops COMPILING proves nothing — the assertion never
-    executed, so the red says only that the break was malformed.
-  - A COMPILE-TIME contract test is the opposite case: compilation IS the
-    mechanism. In `*.test-d.ts`, widening a type makes its `@ts-expect-error`
-    unused and `check-types` fails for exactly the intended reason. Red is not
-    the evidence though — the EXPECTED DIAGNOSTIC is. A typo, a bad import or
-    an unrelated type error in the same file all stop compilation too, and
-    prove nothing about the property.
-  - `@ts-expect-error` is the sharp edge here, because it suppresses ANY error
-    on the line that follows. A test asserting "this call is rejected" stays
-    green once the code starts erroring for a different reason, and stays green
-    after the original rejection stops happening. Two things that look like
-    mitigations and are not: a comment naming the expected code, which `tsc`
-    never reads; and a positive control asserting the ACCEPTED form still
-    compiles, which an unrelated error confined to the rejected line leaves
-    untouched. Only an assertion the checker EVALUATES distinguishes the cases —
-    `expectTypeOf(...)`, or a diagnostic-aware type test that names the error it
-    expects. If the property cannot be asserted that way, say in the file that
-    the directive is unverified rather than letting it read as coverage.
-  - The count must not drop by ACCIDENT: a suite that silently stopped being
-    discovered reads as a pass, which is what that guards. Removing a test on
-    purpose is a different act, sometimes correct (below), and the PR says
-    which test went and why.
-- Before you assert or measure, name the property that SEPARATES a correct
-  implementation from the plausible broken one you are worried about, and check
-  that it is the property you are about to test. A necessary-but-insufficient
-  property returns green from both, and it does so carrying the authority of
-  having been checked, which closes the question. Two worked examples, both real:
-  - measuring whether an old database constraint could be DROPPED, when what
-    decides the repair is whether the code can FIND it. Dropping succeeded, and
-    the repair would still have skipped every database silently.
-  - asserting a generated identifier is `length <= 63`, when a plain truncation
-    is also 63 characters. The one test guarding the naming passed on the broken
-    implementation; distinctness was the separating property.
-
-  The operational form is to ask what ELSE would produce the same green. If
-  anything other than the property under test does — a fixture that never
-  reaches the mechanism, an unregistered type falling through to a default, an
-  assertion satisfied by absence, a search whose glob missed the directory —
-  the property is not covered yet. Add the positive control that makes the
-  mechanism's presence observable, and run it.
-
-- Whatever you are currently judging WITH is not being judged. A probe, a
-  derived check, a test, a post-apply verifier and the baseline diff that reads
-  the suite all had the same defect in one week here, and every one of them
-  existed to catch the layer above it. They were hard to see not because the
-  defect was subtle but because each occupied the position auditing is done
-  from, so nothing stood further out to look at it. Periodically step out one
-  level and give the instrument the same treatment as its subject: a positive
-  control on an input where you know the answer, and where the answer is not
-  "nothing". Confirming an instrument against a case that did not move cannot
-  distinguish it from one that reports nothing under any circumstances.
-- A test that passes both with and without the fix is worse than no test: the
-  next reader takes the green as coverage. **Repair it first.** Usually the
-  fixture never reaches the mechanism or the assertion is satisfied by absence,
-  and both are fixable. Deleting the ONLY attempted coverage for a behaviour
-  trades a misleading green for no signal at all, which is not an improvement.
-  Deletion is right in two cases, and they need different notes:
-  - **redundant** — the behaviour is genuinely covered elsewhere. Say in the
-    file that remains WHERE, so the next reader can follow it.
-  - **obsolete** — the code no longer does the thing. There is no remaining
-    file, and demanding one would force a false coverage comment. Say what
-    behaviour was removed and in which change instead.
-
-  Either way this is the deliberate removal the count rule exempts, so state the
-  drop rather than letting it look like a suite that went missing.
+- A test is only evidence once you have watched it FAIL for the intended
+  reason, and a green that both the fixed and the broken implementation
+  produce is worse than no test. How to establish that — break-verification,
+  the property that SEPARATES a correct implementation from the plausible
+  broken one, auditing the instrument you are judging with, and when deleting
+  a test is the right call — is the `testing-evidence` skill. Load it before
+  adding, changing or judging a test.
 
 ## How much of the machine a local gate may take
 
@@ -421,6 +455,26 @@ is in flight.
   publisher answers 404 and would strand it after the rest of the train is
   already live. Details: the `release-and-changesets` skill.
 
+## Clean up what you started
+
+Anything a task brings up, that task takes down. Containers started to verify
+something, worktrees created for a branch, throwaway branches, scratch files
+and test databases all get removed when the work is done — not left for the
+next person to find and wonder about.
+
+The same applies to anything you WRITE here. Tooling that allocates a resource
+ships its teardown in the same change, not as a follow-up: a `create` with no
+matching `remove` leaks whatever is scarce, and what is scarce is rarely disk.
+
+```sh
+docker stop nextly-postgres17-test nextly-postgres15-test nextly-mysql-test
+pnpm worktree remove <branch>
+```
+
+Stopping the test containers is safe and cheap — `docker start` by name brings
+them back with their data, which is why the start commands above are `start`
+rather than `compose up`.
+
 ## Git and PR rules
 
 - Never commit directly to main. Branch, open a PR, request review.
@@ -431,6 +485,81 @@ is in flight.
   fails, fix the cause.
 - Pre-existing lint or type failures may be left alone (mention them in the
   PR); introducing new ones is not acceptable.
+
+## Code Review Rules
+
+For the automatic reviewer. CI already decides formatting, types, lint, the
+comment convention, changeset presence, design tokens and bare `Error` in
+product code, so none of those belong here — a reviewer relitigating a
+mechanical check costs a round and settles nothing. What follows is the
+consequential behaviour no check in this repository can judge.
+
+### Published surface is a compatibility contract
+
+`packages/nextly` publishes many export subpaths and every package versions in
+lockstep. Flag a removed, renamed or retyped export, a narrowed parameter, a
+widened return, or a changed default, unless the pull request states the
+compatibility decision and what consumers should do instead. Adding an export
+is safe; changing what an existing one means is not.
+
+### Behaviour must match across database dialects
+
+Postgres, MySQL and SQLite are all supported through `adapter-drizzle`. Flag a
+change to query building, DDL, migrations or type mapping that alters
+observable behaviour on one dialect without either covering the others or
+documenting the limitation as deliberate. Field-to-column mapping has one home
+(`packages/nextly/src/domains/schema/services/field-column-descriptor.ts`); an
+adapter that starts mapping field types is the defect, not a local fix.
+
+### `plugin-sdk` is the only stable plugin surface
+
+Flag a plugin or builder reaching into `nextly` or `@nextlyhq/admin` internals
+rather than through `@nextlyhq/plugin-sdk`, and flag a new export added to the
+SDK without a statement that it is intended to be stable. The safe path is to
+widen the SDK deliberately, not to bypass it.
+
+### A precondition runs before the work it guards
+
+Authorization, ownership, validity and quota checks must execute before the
+mutation they protect. Flag any reordering that moves one behind the work for
+cost reasons: the request is then rejected after the state has already changed,
+which turns a saving into a security hole. Defensive assertions over values
+already in hand may move; preconditions may not.
+
+### Access decisions have one path
+
+`overrideAccess: false` is judged by a single gate. Flag a second place that
+decides whether a caller may read or write, a hand-assembled caller literal
+instead of `readAccessCaller`, or a rule handed the stored `action-resource`
+permission spelling rather than the rule-facing `resource:action` one. Two
+doors that answer one key differently is a defect this repository has already
+had.
+
+### One question has one implementation
+
+Flag a narrower view computed alongside the richer one rather than derived from
+it — a count kept beside a list, a summary recomputed from the same inputs, a
+test that reconstructs the call it is watching instead of observing it. Two
+implementations agree on the day they are written and drift silently after,
+because both look correct in isolation.
+
+### A test must separate correct from plausibly broken
+
+Flag a test whose assertion a plausible broken implementation would also
+satisfy: a length bound a plain truncation meets, an assertion satisfied by
+absence, a fixture that never reaches the mechanism, an `@ts-expect-error` that
+would suppress an unrelated error on the same line. Say which property is
+uncovered and what would distinguish the two implementations. Flag a suite that
+silently stopped being discovered; a deliberate removal is a different act and
+the pull request should say which test went and why.
+
+### Stored data and migrations are hard to reverse
+
+Flag a migration that drops or rewrites existing rows or columns, a change to
+an established storage spelling, or a schema change that an existing
+installation would silently fail to receive, unless the pull request names the
+compatibility decision. Reaching existing databases is the part that gets
+missed.
 
 ---
 

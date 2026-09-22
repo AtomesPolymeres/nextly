@@ -318,12 +318,25 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm check:docs-claims
 
-      # The local gates must say how much of a developer's machine they may
-      # take. Unbounded, the pre-push hook met turbo's default of 10 package
-      # tasks with Vitest's default of one worker per core in 23 uncapped
-      # packages, and the kernel OOM-killer took systemd and dbus-daemon on a
-      # 9.7 GiB WSL2 VM. The bound is a comment in two files otherwise, and the
-      # next person to add a turbo invocation will not read it.
+      # Agent instructions name commands and files, and those rot silently as
+      # scripts are renamed and files move. Measured when this landed: the
+      # integration-test skill and rule both told the reader to start the test
+      # containers with `pnpm docker:test`, which AGENTS.md correctly documents
+      # as a probe of the DEV stack that starts nothing — and a skill pointed at
+      # a `pnpm generate:types` that is a CLI command, not a script. Advisory in
+      # polarity but blocking as a check: it reports only references it can
+      # resolve unambiguously, so a finding is a broken reference rather than a
+      # judgement call.
+      - name: Agent instructions resolve
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm check:agent-contract
+
+      # The local gates must say how much of a machine they may take.
+      # Unbounded, the pre-push hook meets turbo's default of 10 package tasks
+      # with Vitest's default of one worker per core in 23 uncapped packages,
+      # which exhausts the memory of an ordinary development machine. The bound
+      # is a comment in two files otherwise, and the next person to add a turbo
+      # invocation will not read it.
       - name: Local gates declare their resource bound
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm check:local-gate-bounds
