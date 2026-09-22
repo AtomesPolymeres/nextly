@@ -9,16 +9,26 @@
  * correct prose, which `derived-checks.md` calls the failure that gets an
  * advisory check deleted.
  */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
 import { describe, expect, it } from "vitest";
 
 import {
   ANCHORS,
+  EXTENSIONLESS_FILES,
+  REVIEW_PROMPT,
   REQUIRED_RULES,
   claimsBareFile,
+  claimsFilePath,
   guidanceReferences,
+  instructionFiles,
+  unresolvedIn,
   claimsRepoRoot,
   codeSpans,
   missingAnchors,
+  namesAWorkspace,
   pathsIn,
   gitIgnored,
   pnpmScriptsIn,
@@ -56,22 +66,22 @@ describe("naming the script a pnpm invocation runs", () => {
    */
   it("steps over a filter, reports the workspace, and records the subcommand", () => {
     expect(pnpmScriptsIn("`pnpm --filter playground nextly generate:types`")).toEqual([
-      { filter: "playground", name: "nextly", subcommand: "generate:types" },
+      { filter: "playground", name: "nextly", subcommands: ["generate:types"] },
     ]);
   });
 
   it("records no subcommand when the invocation is just a script", () => {
-    expect(pnpmScriptsIn("`pnpm check-types`")[0].subcommand).toBeNull();
+    expect(pnpmScriptsIn("`pnpm check-types`")[0].subcommands).toEqual([]);
   });
 
   it("does not read a shell comment as a subcommand", () => {
     // `pnpm --filter <pkg>... build  # trailing ... includes <pkg> itself`
-    expect(pnpmScriptsIn("`pnpm build # trailing words explain the flag`")[0].subcommand).toBeNull();
+    expect(pnpmScriptsIn("`pnpm build # trailing words explain the flag`")[0].subcommands).toEqual([]);
   });
 
   it("strips the dependents selector from a filter", () => {
     expect(pnpmScriptsIn("`pnpm --filter nextly... build`")).toEqual([
-      { filter: "nextly", name: "build", subcommand: null },
+      { filter: "nextly", name: "build", subcommands: [] },
     ]);
   });
 
@@ -123,6 +133,23 @@ describe("naming a file a document claims exists", () => {
       expect([...pathsIn(span)]).toEqual([]);
     }
   );
+
+  it("keeps an extensionless dotfile, which the extension allowlist discarded", () => {
+    // AGENTS.md names `.nvmrc` twice. It reached no check at all, so renaming
+    // it left this module green.
+    expect([...pathsIn("pin the version in `.nvmrc`")]).toEqual([".nvmrc"]);
+  });
+
+  it.each(["`.wslconfig`", "`.nextly-admin`", "`.item`", "`.cause`"])(
+    "ignores a dot-led token that names no repository file: %s",
+    span => {
+      // Each of these is real prose from the instruction files, and accepting
+      // every single-dot token — the shape `.nvmrc` also has — reported all
+      // four. A Windows file outside any repository, a directory prefix, a CSS
+      // class and a property of `Error`.
+      expect([...pathsIn(span)]).toEqual([]);
+    }
+  );
 });
 
 describe("deciding whether an unresolved path was a claim", () => {
@@ -136,6 +163,35 @@ describe("deciding whether an unresolved path was a claim", () => {
     // `packages/nextly/AGENTS.md` writes `src/config.ts` for its own file.
     expect(claimsRepoRoot("src/config.ts", topLevel)).toBe(false);
   });
+
+  /*
+   * 🔴 The rule above is right for a skill and wrong for a nested guide, and
+   * the case that separates them is the DELETION — which the test above does
+   * not reach, because `src/config.ts` resolving from the package is why it is
+   * never asked about. Measured against the real repository: deleting
+   * `packages/nextly/src/config.ts` left the check reporting OK.
+   */
+  const basenames = new Set(["ci.yml"]);
+
+  it("reports a nested guide's relative path once its target is gone", () => {
+    expect(claimsFilePath("src/config.ts", { topLevel, basenames, nestedGuide: true })).toBe(true);
+  });
+
+  it("still treats the same path in a skill as a fragment", () => {
+    expect(claimsFilePath("src/config.ts", { topLevel, basenames, nestedGuide: false })).toBe(false);
+  });
+
+  it("reports a repo-root path from either source", () => {
+    for (const nestedGuide of [true, false]) {
+      expect(claimsFilePath("packages/nextly/src/gone.ts", { topLevel, basenames, nestedGuide }))
+        .toBe(true);
+    }
+  });
+
+  it("hands a bare name to the bare-name rule", () => {
+    expect(claimsFilePath("ci.yml", { topLevel, basenames, nestedGuide: true })).toBe(false);
+    expect(claimsFilePath("gone.yml", { topLevel, basenames, nestedGuide: true })).toBe(true);
+  });
 });
 
 describe("refusing a file set that cannot have found anything", () => {
@@ -145,7 +201,7 @@ describe("refusing a file set that cannot have found anything", () => {
    * them either — a collector that dropped AGENTS.md while picking up three
    * skills matches any total. Membership is what gets asserted.
    */
-  const COMPLETE = ["AGENTS.md", ...REQUIRED_RULES, ".claude/skills/y/SKILL.md"];
+  const COMPLETE = ["AGENTS.md", ...REQUIRED_RULES, ".claude/skills/y/SKILL.md", REVIEW_PROMPT];
 
   it("names every anchor missing from an empty set", () => {
     expect(missingAnchors([])).toEqual([...ANCHORS, ...REQUIRED_RULES]);
@@ -265,29 +321,72 @@ describe("reading a tilde-fenced block", () => {
   });
 });
 
+describe("the population the check actually reads", () => {
+  /*
+   * 🔴 An anchor is how this module refuses a set that cannot have found
+   * anything. `.github/review-prompt.md` is executable guidance for the CI
+   * review agent — it names `.github/scripts/review-bot-gh.sh` with five
+   * subcommands, two skills and a workflow file — and it was outside the
+   * population entirely, so renaming any of those targets left the check
+   * green. Asserting membership by name is what separates "checked and clean"
+   * from "never read it".
+   */
+  it("collects the CI review prompt", () => {
+    expect(instructionFiles()).toContain(REVIEW_PROMPT);
+  });
+
+  it("holds the review prompt as an anchor, so its deletion refuses", () => {
+    expect(ANCHORS).toContain(REVIEW_PROMPT);
+    expect(missingAnchors(["AGENTS.md", ...REQUIRED_RULES, ".claude/skills/y/SKILL.md"]))
+      .toEqual([REVIEW_PROMPT]);
+  });
+
+  it("recognises the extensionless dotfiles the instructions name", () => {
+    // `.nvmrc` is the measured one: AGENTS.md cites it twice.
+    expect(EXTENSIONLESS_FILES.has(".nvmrc")).toBe(true);
+  });
+});
+
 describe("deciding whether a bare filename is a claim", () => {
   // Measured over the instruction files as they stand: accepting every bare
   // name reported 20 valid references, and this rule reports none of them
   // while still catching all three probe deletions.
-  const basenames = new Set(["ci.yml", "FieldRenderer.tsx", "context7.json", ".fallowrc.jsonc"]);
-  const rootFiles = new Set(["context7.json", ".fallowrc.jsonc"]);
+  const basenames = new Set(["ci.yml", "FieldRenderer.tsx", "context7.json", ".nvmrc"]);
 
   it("stays silent on a name some file in the repository carries", () => {
-    expect(claimsBareFile("ci.yml", basenames, rootFiles)).toBe(false);
-    expect(claimsBareFile("FieldRenderer.tsx", basenames, rootFiles)).toBe(false);
+    expect(claimsBareFile("ci.yml", basenames)).toBe(false);
+    expect(claimsBareFile("FieldRenderer.tsx", basenames)).toBe(false);
   });
 
   it("reports a name no file carries", () => {
-    expect(claimsBareFile("context7-gone.json", basenames, rootFiles)).toBe(true);
+    expect(claimsBareFile("context7-gone.json", basenames)).toBe(true);
   });
 
   it("ignores a bare suffix, which names no file at all", () => {
-    expect(claimsBareFile(".test.mjs", basenames, rootFiles)).toBe(false);
-    expect(claimsBareFile(".md", basenames, rootFiles)).toBe(false);
+    expect(claimsBareFile(".test.mjs", basenames)).toBe(false);
+    expect(claimsBareFile(".md", basenames)).toBe(false);
   });
 
-  it("still checks a dot-led file that really is at the root", () => {
-    expect(claimsBareFile(".fallowrc.jsonc", basenames, rootFiles)).toBe(false);
+  /*
+   * This is only ever reached once the caller's existence checks have already
+   * failed, so for an allowlisted dotfile there is nothing left to ask: it
+   * names repository configuration at one place and it was not there. A
+   * same-named file elsewhere does not make the citation live — that fallback
+   * is what let a RELOCATED `.nvmrc` read as fine.
+   */
+  it("reports an allowlisted dotfile that did not resolve, wherever its name occurs", () => {
+    expect(claimsBareFile(".nvmrc", basenames)).toBe(true);
+  });
+
+  /*
+   * 🔴 The rule this replaced asked whether the name was a TRACKED ROOT FILE,
+   * which reads as the same question and is not. That set is read from the
+   * repository as it stands, so a deleted `.nvmrc` is absent from it and the
+   * reference was dropped as a suffix pattern — silence arriving exactly when
+   * the citation went stale.
+   */
+  it("reports an extensionless dotfile once no file carries the name", () => {
+    expect(claimsBareFile(".nvmrc", new Set(["ci.yml"]))).toBe(true);
   });
 });
 
@@ -316,5 +415,163 @@ describe("finding citations of agent guidance anywhere in the repository", () =>
 
   it("drops trailing punctuation that belongs to the sentence", () => {
     expect([...guidanceReferences("see `.claude/rules/a.md`.")]).toEqual([".claude/rules/a.md"]);
+  });
+});
+
+describe("keeping every subcommand of one launcher", () => {
+  /*
+   * 🔴 The entry was keyed on filter and script alone, so the last invocation
+   * won and the rest vanished. AGENTS.md names six `pnpm worktree`
+   * subcommands and the checker reported ONE of them — deleting five changed
+   * nothing it said. The script stays one entry, so a missing script is still
+   * one finding rather than six; the subcommands accumulate.
+   */
+  it("accumulates the subcommands of a repeated launcher", () => {
+    const entries = pnpmScriptsIn(
+      "`pnpm worktree new` then `pnpm worktree list` then `pnpm worktree remove`"
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0].subcommands).toEqual(["new", "list", "remove"]);
+  });
+
+  it("does not repeat a subcommand named twice", () => {
+    expect(pnpmScriptsIn("`pnpm worktree list` and again `pnpm worktree list`")[0].subcommands)
+      .toEqual(["list"]);
+  });
+});
+
+describe("telling a workspace filter from a placeholder", () => {
+  /*
+   * 🔴 An unknown filter was skipped as a placeholder, which is right for
+   * `<pkg>` and wrong for `playground`: renaming a real workspace left every
+   * command filtered to it green.
+   */
+  it.each(["playground", "nextly", "@nextlyhq/ui", "plugin-form-builder"])(
+    "treats %s as a concrete workspace",
+    filter => {
+      expect(namesAWorkspace(filter)).toBe(true);
+    }
+  );
+
+  it.each(["<pkg>", "<workspace>", "*", "{a,b}"])("treats %s as a placeholder", filter => {
+    expect(namesAWorkspace(filter)).toBe(false);
+  });
+});
+
+describe("reading a file named as a command operand", () => {
+  /*
+   * 🔴 A span holding whitespace was discarded whole, so a file named as an
+   * operand was never looked at. Measured against the repository: deleting
+   * `scripts/measure-facts.mjs` left the check reporting OK, because AGENTS.md
+   * names it only inside `node scripts/measure-facts.mjs`.
+   */
+  it("reads the operand of a command span", () => {
+    expect([...pathsIn("run `node scripts/measure-facts.mjs` first")]).toEqual([
+      "scripts/measure-facts.mjs",
+    ]);
+  });
+
+  it("reads a flag's argument", () => {
+    expect([...pathsIn("`docker compose -f docker-compose.test.yml up -d`")]).toEqual([
+      "docker-compose.test.yml",
+    ]);
+  });
+
+  it("still drops the words of a command that name no file", () => {
+    // Only the operand survives; `node`, `-f`, `up` and `-d` are not paths.
+    expect([...pathsIn("`node --experimental-vm-modules scripts/x.mjs --out dir`")]).toEqual([
+      "scripts/x.mjs",
+    ]);
+  });
+
+  it("still ignores a glob operand", () => {
+    expect([...pathsIn("`eslint src/**/*.ts --fix`")]).toEqual([]);
+  });
+});
+
+describe("analysing a real instruction file on disk", () => {
+  /*
+   * 🔴 The `claimsFilePath` tests above pass `nestedGuide: true` straight in,
+   * which reconstructs the classification the caller performs. Deleting the
+   * derivation at the call site would leave them green while a deleted
+   * package-relative target is silently ignored again. These give
+   * `unresolvedIn` a file PATH and let it decide, which is the production
+   * decision.
+   */
+  const withRepo = body => {
+    const base = mkdtempSync(join(tmpdir(), "nextly-contract-"));
+    try {
+      mkdirSync(join(base, "packages", "thing", "src"), { recursive: true });
+      mkdirSync(join(base, ".claude", "skills", "x"), { recursive: true });
+      writeFileSync(join(base, "package.json"), "{}");
+      return body(base);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  };
+
+  const facts = { topLevel: new Set(["packages", "scripts", ".claude"]), basenames: new Set() };
+
+  it("reports a nested guide's relative path once the target is gone", () => {
+    withRepo(base => {
+      // The file is NOT created, which is the deletion being modelled.
+      const found = unresolvedIn({
+        base,
+        file: "packages/thing/AGENTS.md",
+        text: "The entry point is `src/config.ts`.",
+        ...facts,
+      });
+      expect(found).toEqual(["src/config.ts"]);
+    });
+  });
+
+  it("stays silent while that target exists", () => {
+    withRepo(base => {
+      writeFileSync(join(base, "packages", "thing", "src", "config.ts"), "");
+      const found = unresolvedIn({
+        base,
+        file: "packages/thing/AGENTS.md",
+        text: "The entry point is `src/config.ts`.",
+        ...facts,
+      });
+      expect(found).toEqual([]);
+    });
+  });
+
+  it("treats the same citation in a skill as a fragment, not a claim", () => {
+    withRepo(base => {
+      const found = unresolvedIn({
+        base,
+        file: ".claude/skills/x/SKILL.md",
+        text: "The entry point is `src/config.ts`.",
+        ...facts,
+      });
+      expect(found).toEqual([]);
+    });
+  });
+});
+
+describe("dotfiles named with a directory in front of them", () => {
+  it("reads an allowlisted dotfile under a package", () => {
+    // 🔴 The allowlist was compared against the whole path, so a nested
+    // dotfile was discarded before any check ran.
+    expect([...pathsIn("see `packages/nextly/.gitignore`")]).toEqual([
+      "packages/nextly/.gitignore",
+    ]);
+  });
+
+  /*
+   * 🔴 A bare allowlisted dotfile used to fall through to the repository-wide
+   * basenames, so MOVING the root `.nvmrc` into a subdirectory left the
+   * citation reading as live — the moved file still carries the name.
+   * Deletion was reported and relocation was not, and relocation is the
+   * likelier accident.
+   */
+  it("reports a relocated dotfile, not just a deleted one", () => {
+    expect(claimsBareFile(".nvmrc", new Set([".nvmrc", "ci.yml"]))).toBe(true);
+  });
+
+  it("still treats a bare suffix as naming nothing", () => {
+    expect(claimsBareFile(".md", new Set(["ci.yml"]))).toBe(false);
   });
 });

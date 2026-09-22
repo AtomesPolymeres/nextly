@@ -43,7 +43,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  * collector that dropped `AGENTS.md` and picked up three skills matches any
  * total. So membership is what gets asserted, by name.
  */
-export const ANCHORS = ["AGENTS.md", ".claude/rules", ".claude/skills"];
+export const REVIEW_PROMPT = ".github/review-prompt.md";
+
+export const ANCHORS = ["AGENTS.md", ".claude/rules", ".claude/skills", REVIEW_PROMPT];
 
 /**
  * Rules AGENTS.md promises are loaded in EVERY session, named individually.
@@ -96,6 +98,31 @@ const PATH_EXTENSIONS = [
   ".ts", ".tsx", ".mjs", ".cjs", ".js", ".json", ".jsonc", ".yml", ".yaml",
   ".md", ".mdx", ".sh", ".css", ".toml",
 ];
+
+/**
+ * Extensionless dotfiles that a reference may be naming as a repository file.
+ *
+ * 🔴 The extension allowlist above is how a token is recognised as naming a
+ * file, and these carry no extension at all. `AGENTS.md` names `.nvmrc` twice
+ * and it was discarded before any check ran, so renaming it left
+ * `check:agent-contract` green while `claimsBareFile` below still listed it
+ * among the references it recovers.
+ *
+ * A list is the wrong-looking answer and it is the one the measurement gives.
+ * Accepting any single-dot token instead — `.nvmrc` and `.item` are the same
+ * SHAPE — reported four references that are all perfectly valid: `.wslconfig`
+ * (a Windows file outside any repository), `.nextly-admin` (a directory
+ * prefix), `.item` (a CSS class) and `.cause` (a property of `Error`). Prose
+ * about code is full of dot-led tokens that name no file, so shape cannot
+ * separate them and vocabulary has to, exactly as it does for extensions.
+ *
+ * Entries are repository-managed configuration files. A file NOT listed here
+ * is not checked, which is the advisory polarity this module is built on.
+ */
+export const EXTENSIONLESS_FILES = new Set([
+  ".nvmrc", ".npmrc", ".node-version", ".gitignore", ".gitattributes",
+  ".dockerignore", ".editorconfig", ".prettierignore", ".eslintignore",
+]);
 
 /**
  * The inline code spans and fenced-block lines of a Markdown document.
@@ -190,7 +217,17 @@ export function pnpmScriptsIn(text) {
     // REPORTED as unverified rather than silently passing, because silence
     // from a checker reads as coverage.
     const subcommand = words.slice(i + 1).find(word => /^[a-z][a-z0-9:-]*$/.test(word)) ?? null;
-    found.set(`${filter ?? ""}\u0000${cleaned}`, { filter, name: cleaned, subcommand });
+    // 🔴 Keyed on filter and script alone, the last invocation won and the
+    // rest vanished. AGENTS.md names six `pnpm worktree` subcommands and the
+    // checker reported ONE, so deleting five of them changed nothing it said.
+    // The script stays one entry — a missing script is one finding, not six —
+    // while the subcommands accumulate.
+    const key = `${filter ?? ""}\u0000${cleaned}`;
+    const entry = found.get(key) ?? { filter, name: cleaned, subcommands: [] };
+    if (subcommand !== null && !entry.subcommands.includes(subcommand)) {
+      entry.subcommands.push(subcommand);
+    }
+    found.set(key, entry);
   }
   return [...found.values()];
 }
@@ -202,6 +239,17 @@ export function pnpmScriptsIn(text) {
  * skips rather than reporting — the advisory polarity again. A placeholder like
  * `<pkg>` is exactly that case.
  */
+/**
+ * Whether a `--filter` argument is a concrete workspace name or a placeholder.
+ *
+ * Instruction files write `pnpm --filter <pkg> build` to mean "any package",
+ * and that names nothing to check. `playground` names something exactly, and
+ * its disappearance is the drift worth reporting.
+ */
+export function namesAWorkspace(filter) {
+  return /^@?[a-z0-9][a-z0-9@/._-]*$/.test(filter);
+}
+
 export function workspaceScripts(base = root) {
   const byName = new Map();
   for (const dir of ["packages", "apps"]) {
@@ -229,14 +277,28 @@ export function workspaceScripts(base = root) {
  */
 export function pathsIn(text) {
   const found = new Set();
-  for (const token of codeSpans(text).map(span => span.trim())) {
-    if (/[*?[\]{}<>()\s|$]/.test(token)) continue;
-    if (token.startsWith("/") || token.startsWith("~") || token.startsWith("@")) continue;
-    if (/^[a-z]+:\/\//.test(token)) continue;
-    // A path with a line or symbol suffix (`file.ts:42`) still names a file.
-    const path = token.split(":")[0];
-    if (!PATH_EXTENSIONS.some(ext => path.endsWith(ext))) continue;
-    found.add(path);
+  // 🔴 A span holding whitespace was discarded WHOLE, so a file named as an
+  // OPERAND was never looked at. `node scripts/measure-facts.mjs` and
+  // `docker compose -f docker-compose.test.yml ...` are concrete commands this
+  // module claims to protect, and deleting the first left the check green. The
+  // span is split and each word judged alone; the rules below already drop
+  // every word that is not a path.
+  for (const span of codeSpans(text)) {
+    for (const token of span.trim().split(/\s+/)) {
+      if (/[*?[\]{}<>()|$]/.test(token)) continue;
+      if (token.startsWith("/") || token.startsWith("~") || token.startsWith("@")) continue;
+      if (/^[a-z]+:\/\//.test(token)) continue;
+      // A path with a line or symbol suffix (`file.ts:42`) still names a file.
+      const path = token.split(":")[0];
+      // The allowlist names a FILE, so it is matched against the basename.
+      // Comparing the whole path discarded `packages/nextly/.gitignore`, and
+      // this repository has nested `.gitignore` files that guidance cites.
+      const named = EXTENSIONLESS_FILES.has(path.split("/").pop());
+      if (!PATH_EXTENSIONS.some(ext => path.endsWith(ext)) && !named) {
+        continue;
+      }
+      found.add(path);
+    }
   }
   return found;
 }
@@ -253,6 +315,27 @@ export function pathsIn(text) {
  */
 export function claimsRepoRoot(path, topLevel) {
   return topLevel.has(path.split("/")[0]);
+}
+
+/**
+ * Whether an unresolved reference is a claim this module should report.
+ *
+ * 🔴 `claimsRepoRoot` alone went quiet on the case it was written for. A
+ * nested `packages/nextly/AGENTS.md` cites its own files relatively, so
+ * deleting `packages/nextly/src/config.ts` leaves `src/config.ts` resolving
+ * from neither base — and `src` is not a top-level directory, so the reference
+ * was discarded as an unlocatable fragment. The check stayed green precisely
+ * BECAUSE the file had been deleted.
+ *
+ * A nested guide documents one package, so a slash-bearing path in it is a
+ * claim about that package whether or not it still resolves. Skills are the
+ * case `claimsRepoRoot` was protecting: `collections/fields/catalog.ts` there
+ * is a tail of a longer path the surrounding prose supplies and locates
+ * nothing, so they keep the stricter rule.
+ */
+export function claimsFilePath(path, { topLevel, basenames, nestedGuide = false }) {
+  if (!path.includes("/")) return claimsBareFile(path, basenames);
+  return nestedGuide || claimsRepoRoot(path, topLevel);
 }
 
 /**
@@ -274,11 +357,49 @@ export function claimsRepoRoot(path, topLevel) {
  * staleness worth reporting. Measured against the same corpus: 0 false
  * positives, and all three probe deletions reported.
  */
-export function claimsBareFile(name, basenames, rootFiles) {
-  // A dot-led token is a suffix pattern (`.test.mjs`) unless it is a real root
-  // file (`.fallowrc.jsonc`), and a suffix names nothing to check.
-  if (name.startsWith(".") && !rootFiles.has(name)) return false;
+export function claimsBareFile(name, basenames) {
+  // 🔴 An allowlisted dotfile names repository configuration at ONE place, so
+  // the existence checks the caller already ran are the whole question. Going
+  // on to consult the repository-wide basenames meant MOVING the root `.nvmrc`
+  // into a subdirectory left the citation reading as live, because the moved
+  // file still carries the name. Deletion was reported and relocation was not,
+  // and relocation is the likelier accident.
+  if (EXTENSIONLESS_FILES.has(name)) return true;
+  // 🔴 A dot-led token is a suffix pattern (`.md`, `.test.mjs`) when it ENDS in
+  // a known extension, and a suffix names nothing to check.
+  //
+  // The first version asked instead whether the token was a tracked root file,
+  // which reads as the same question and is not. That set is read from the
+  // repository as it stands, so a deleted `.nvmrc` is absent from it and the
+  // reference was dropped as a suffix pattern — the check went quiet exactly
+  // when the citation went stale, which is the one case it exists to catch.
+  //
+  // The cost, stated rather than hidden: `.fallowrc.jsonc` ends in a known
+  // extension, so its deletion is still missed. That was already true, and the
+  // alternative reports every `.md` in the instruction files.
+  if (name.startsWith(".") && PATH_EXTENSIONS.some(ext => name.endsWith(ext))) return false;
   return !basenames.has(name);
+}
+
+/**
+ * The unresolved references one instruction file claims.
+ *
+ * 🔴 The nested-guide classification used to live in `main`, so a test could
+ * pass `nestedGuide: true` straight to `claimsFilePath` and stay green while
+ * the caller stopped deriving it. Deriving it HERE, from the file path the
+ * analysis is given, means a test of this function exercises the real
+ * classification rather than reconstructing it.
+ *
+ * A nested AGENTS.md cites its own package's files relatively, so both bases
+ * are tried before anything is reported.
+ */
+export function unresolvedIn({ file, text, base = root, topLevel, basenames }) {
+  const near = dirname(join(base, file));
+  const nestedGuide = file.endsWith("/AGENTS.md");
+  return [...pathsIn(text)].filter(path => {
+    if (existsSync(join(base, path)) || existsSync(join(near, path))) return false;
+    return claimsFilePath(path, { topLevel, basenames, nestedGuide });
+  });
 }
 
 /** Every `.md` under a directory, recursively. */
@@ -299,6 +420,12 @@ export function instructionFiles(base = root) {
   for (const name of ["AGENTS.md", "CLAUDE.md"]) {
     if (existsSync(join(base, name))) files.push(name);
   }
+  // Executable guidance for the CI review agent, and the same kind of subject
+  // as the rest: it names `.github/scripts/review-bot-gh.sh` with five
+  // subcommands, two skills and a workflow file. Omitting it meant renaming
+  // any of those left this check green while the review bot pointed at
+  // nothing — a blind spot inside the coverage the check claims.
+  if (existsSync(join(base, REVIEW_PROMPT))) files.push(REVIEW_PROMPT);
   for (const dir of ["packages", "apps"]) {
     const full = join(base, dir);
     if (!existsSync(full)) continue;
@@ -436,7 +563,6 @@ function main() {
     .split("\n")
     .filter(Boolean);
   const basenames = new Set(tracked.map(path => path.split("/").pop()));
-  const rootFiles = new Set(tracked.filter(path => !path.includes("/")));
 
   const scripts = new Set(
     Object.keys(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts ?? {})
@@ -464,8 +590,8 @@ function main() {
 
   for (const file of files) {
     const text = readFileSync(join(root, file), "utf8");
-    for (const { filter, name, subcommand } of pnpmScriptsIn(text)) {
-      if (subcommand !== null) {
+    for (const { filter, name, subcommands } of pnpmScriptsIn(text)) {
+      for (const subcommand of subcommands) {
         unverified.push({ file, claim: `pnpm ${filter ? `--filter ${filter} ` : ""}${name} ${subcommand}` });
       }
       if (filter === null) {
@@ -475,20 +601,21 @@ function main() {
         continue;
       }
       const declared = byWorkspace.get(filter);
-      // An unknown filter is a placeholder, not a claim about a script.
-      if (declared && !declared.has(name)) {
+      if (!declared) {
+        // 🔴 An unknown filter was skipped as a placeholder, which is right for
+        // `<pkg>` and wrong for `playground`: renaming a real workspace left
+        // every command filtered to it green. A placeholder cannot be a
+        // package name, so only those shapes are skipped.
+        if (namesAWorkspace(filter)) {
+          findings.push({ file, kind: "script", claim: `pnpm --filter ${filter} — no such workspace` });
+        }
+        continue;
+      }
+      if (!declared.has(name)) {
         findings.push({ file, kind: "script", claim: `pnpm --filter ${filter} ${name}` });
       }
     }
-    // A nested AGENTS.md cites its own package's files relatively, so both
-    // bases are tried before anything is reported.
-    const near = dirname(join(root, file));
-    const unresolved = [...pathsIn(text)].filter(path => {
-      if (existsSync(join(root, path)) || existsSync(join(near, path))) return false;
-      return path.includes("/")
-        ? claimsRepoRoot(path, topLevel)
-        : claimsBareFile(path, basenames, rootFiles);
-    });
+    const unresolved = unresolvedIn({ file, text, topLevel, basenames });
     const ignored = gitIgnored(unresolved);
     for (const path of unresolved) {
       if (ignored.has(path)) continue;
