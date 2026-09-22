@@ -256,7 +256,15 @@ export function convertToFieldDefinition(field: BuilderField): FieldDefinition {
   // an untouched switch to false would override the backend's per-type default
   // (text-like fields localize when the collection opts in), pinning fields to
   // shared. Omission means "use the default".
-  if (typeof field.advanced?.localized === "boolean") {
+  //
+  // A field-group REFERENCE never forwards it, even when set: the reference
+  // produces no column, so the flag is unbacked metadata — and a value saved
+  // by the pre-gate editor must not keep riding every save now that the
+  // switch no longer offers it.
+  if (
+    typeof field.advanced?.localized === "boolean" &&
+    !isFieldGroupFieldType(field.type)
+  ) {
     definition.localized = field.advanced.localized;
   }
 
