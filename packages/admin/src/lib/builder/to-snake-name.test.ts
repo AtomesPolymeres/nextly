@@ -78,12 +78,16 @@ describe("the save path (convertToFieldDefinition)", () => {
     // A component reference produces no column, so its localized flag is
     // unbacked metadata — a value saved by the pre-gate editor must not
     // keep riding every save now that the switch no longer offers it.
-    const result = convertToFieldDefinition({
-      ...base,
-      name: "seo_block",
-      type: "component",
-      advanced: { localized: true },
-    });
-    expect(result.localized).toBeUndefined();
+    // Both stored spellings are fed, in either spelling the guard must
+    // refuse.
+    for (const type of ["component", "fieldGroup"] as const) {
+      const result = convertToFieldDefinition({
+        ...base,
+        name: "seo_block",
+        type,
+        advanced: { localized: true },
+      });
+      expect(result.localized).toBeUndefined();
+    }
   });
 });
