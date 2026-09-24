@@ -627,3 +627,12 @@ export type {
  */
 export { MediaPickerDialog } from "@nextlyhq/admin";
 export type { Media, MediaPickerDialogProps } from "@nextlyhq/admin";
+
+/**
+ * AGENCY: la lecture d'un média par identifiant.
+ *
+ * Même frontière que `MediaPickerDialog` au-dessus, et pour un besoin
+ * symétrique : le sélecteur ÉCRIT un identifiant dans les props d'un bloc,
+ * celle-ci le RELIT pour que le canvas puisse dessiner l'image.
+ */
+export { getMediaById } from "@nextlyhq/admin";

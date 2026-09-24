@@ -13,15 +13,19 @@
  * and drift silently afterwards — and the drift is invisible, because a surface
  * missing an input renders a page that looks entirely reasonable.
  *
- * ## What is NOT here
+ * ## AGENCY: `context`
  *
- * `context` — the media resolver and data provider. Neither surface supplies
- * one today, so both fall back to `createStandaloneContext()`, whose media
- * resolver answers `null`: a `core/image` holding a media id draws nothing in
- * the canvas and nothing in the miniature, while the published page shows it.
- * That is a real gap and it is the SAME gap on both surfaces, so closing it
- * belongs to whoever gives the admin a read-only render context — not to a
- * bundle whose job is to keep the two in step.
+ * Il manquait ici, et l'amont le disait : aucune des deux surfaces ne
+ * fournissait de contexte, donc toutes deux retombaient sur
+ * `createStandaloneContext()`, dont le résolveur média répond `null` — un
+ * `core/image` portant un identifiant ne dessinait rien dans le canvas ni dans
+ * la miniature, alors que la page publiée l'affiche. L'amont renvoyait la
+ * correction « à qui donnera à l'admin un contexte de rendu en lecture seule ».
+ *
+ * `admin-render-context` est désormais ce contexte, et il est distribué DEPUIS
+ * ICI pour la raison même qui justifie ce module : la lacune était la même sur
+ * les deux surfaces, et la combler à deux endroits d'appel rouvrirait la
+ * dérive silencieuse que cette dérivation unique existe pour empêcher.
  *
  * @module @nextlyhq/plugin-page-builder/admin/page-render-inputs
  */
@@ -39,6 +43,8 @@ import { offeredTiers } from "@nextlyhq/builder/shell";
 
 import { readRemotePatterns } from "../host-policy";
 import { siteBreakpoints, type SiteStyleData } from "../site-style";
+
+import { adminRenderContext } from "./admin-render-context";
 
 /**
  * The subset of `PageRenderer`'s props this derives.
@@ -63,6 +69,16 @@ export interface PageRenderInputs {
    * broken. A surface has to say which definitions it drew with.
    */
   definitions: DefinitionsById;
+  /**
+   * AGENCY: le contexte de rendu en lecture seule de l'admin.
+   *
+   * REQUIS en sortie, contrairement au renderer où il est optionnel : une
+   * surface qui l'omet ne se signale pas, elle dessine simplement une page
+   * sans ses images. C'est exactement la page plausible-et-fausse que ce
+   * module existe pour empêcher, donc le type ne laisse pas la place de
+   * l'oublier.
+   */
+  context: NonNullable<PageRendererProps["context"]>;
 }
 
 export interface PageRenderInputsOptions {
@@ -164,6 +180,15 @@ export function pageRenderInputs({
      * re-resolve every instance on every render of the surface.
      */
     definitions,
+    /*
+     * AGENCY: la même instance pour les deux surfaces, transmise telle quelle.
+     *
+     * Le contexte ne porte rien qui appartienne à une surface — il résout un
+     * identifiant de média contre la bibliothèque du site, et les deux montrent
+     * le même site. Une copie prise ici lui donnerait une identité nouvelle à
+     * chaque rendu et referait, par image, le travail que sa mémoire évite.
+     */
+    context: adminRenderContext,
   };
 }
 

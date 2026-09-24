@@ -609,6 +609,19 @@ export { MediaCard } from "./components/features/media-library/MediaCard";
 export { MediaPickerDialog } from "./components/features/media-library/MediaPickerDialog";
 export { MediaEditDialog } from "./components/features/media-library/MediaEditDialog";
 
+/*
+ * AGENCY: la lecture d'un média par identifiant, exposée hors de l'admin.
+ *
+ * `plugin-page-builder` en a besoin pour donner au canvas et à la miniature un
+ * contexte de rendu capable de résoudre un `core/image`. Sans elle, les deux
+ * surfaces retombent sur `createStandaloneContext()`, dont le résolveur répond
+ * `null` — l'image s'affiche sur la page publiée et nulle part dans l'admin.
+ *
+ * La FONCTION plutôt que le client entier : ces surfaces lisent un média, elles
+ * n'en créent, n'en modifient et n'en suppriment aucun.
+ */
+export { getMediaById } from "./services/mediaApi";
+
 // Media Library Component Types
 export type { MediaLibraryProps } from "./components/features/media-library";
 export type { MediaLibrarySkeletonProps } from "./components/features/media-library/MediaLibrarySkeleton";
