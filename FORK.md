@@ -54,12 +54,67 @@ composant. Même correctif à appliquer.
 
 ## Publication
 
-Ces paquets sont publiés sous `@agency/*` et substitués par alias npm dans le
-template :
+### TOUJOURS `pnpm publish`, jamais `npm publish`
+
+Les dépendances internes de ce monorepo s'écrivent `workspace:*`. C'est un
+protocole **pnpm**, et il n'a de sens qu'à l'intérieur du workspace :
+`pnpm publish` le remplace par le vrai numéro de version au moment de
+publier, parce qu'un consommateur n'a pas ce workspace.
+
+`npm publish` ne fait pas cette substitution — le protocole n'est pas le
+sien. Le paquet part avec ses `workspace:*`, et toute installation échoue sur
+`EUNSUPPORTEDPROTOCOL: Unsupported URL Type "workspace:"`.
+
+**Erreur commise une fois**, et coûteuse : une version publiée est immuable.
+Il a fallu supprimer la version sur GitHub (scope `delete:packages`) avant de
+republier. `npm publish --dry-run` ne l'attrape pas : il vérifie la liste des
+fichiers, pas le contenu du `package.json` publié.
+
+Vérification après publication :
+
+```bash
+npm pack @atomespolymeres/builder@<version> --registry=https://npm.pkg.github.com
+tar xzf *.tgz && grep -c "workspace:" package/package.json   # doit valoir 0
+```
+
+### Le renommage, au publish seulement
+
+GitHub Packages exige que le scope corresponde au propriétaire du dépôt, donc
+`@atomespolymeres/builder`. Mais renommer le paquet DANS le dépôt casserait
+les 25 autres, qui l'importent sous `@nextlyhq/builder`. Le `package.json`
+est donc renommé juste le temps de publier, puis restauré.
+
+### La séquence complète
+
+```bash
+pnpm turbo build --filter=@nextlyhq/builder...   # le dist DOIT exister
+# renommer package.json en @atomespolymeres/builder
+NODE_AUTH_TOKEN=$(gh auth token) pnpm publish --tag alpha --no-git-checks \
+  --registry=https://npm.pkg.github.com
+# restaurer package.json
+```
+
+`--tag alpha` est obligatoire : npm refuse une préversion sans tag explicite.
+
+### L'alias, côté template
 
 ```json
-"@nextlyhq/builder": "npm:@agency/builder@0.0.2-alpha.66"
+"@nextlyhq/builder": "npm:@atomespolymeres/builder@0.0.2-alpha.66"
 ```
+
+avec `@atomespolymeres:registry=https://npm.pkg.github.com` dans son `.npmrc`.
+
+**Garder le numéro de version de l'amont** : `plugin-page-builder` déclare
+`"@nextlyhq/builder": "0.0.2-alpha.66"` en peer, et l'alias expose la version
+du paquet aliasé. Un numéro différent ne satisferait plus ce peer.
+
+Si npm garde l'ancienne résolution, retirer l'entrée du `package-lock.json`
+et réinstaller — un alias ne réécrit pas un lockfile déjà résolu.
+
+### Le déploiement
+
+Dokploy aura besoin du token en variable d'environnement pour que `npm ci`
+puisse récupérer le paquet privé.
 
 **Garder le numéro de version de l'amont**, sinon les `peerDependencies` des
 paquets qui en dépendent ne sont pas satisfaites.
