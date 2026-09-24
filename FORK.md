@@ -179,31 +179,64 @@ premier paquet de l'orga — pas sur un problème de droits.
 
 `--tag alpha` est obligatoire : npm refuse une préversion sans tag explicite.
 
-### Les versions : `-agency.N` au-dessus du numéro amont
+### Les versions : tout le fork monte ENSEMBLE, en `-agency.N`
 
 Une version publiée est IMMUABLE, donc republier un correctif au-dessus d'une
-version déjà sortie demande un nouveau numéro. Le schéma retenu :
+version déjà sortie demande un nouveau numéro :
 
 ```
-0.0.2-alpha.66-agency.1   # premier correctif maison au-dessus d'alpha.66
+0.0.2-alpha.66-agency.1   # premier jeu de correctifs au-dessus d'alpha.66
 0.0.2-alpha.66-agency.2   # le suivant
 0.0.2-alpha.67-agency.1   # l'amont est monté, le compteur repart à 1
 ```
 
-La filiation reste lisible dans le numéro lui-même, sans table de
-correspondance à tenir à la main.
+La filiation reste lisible dans le numéro, sans table de correspondance à
+tenir à la main.
 
-**Ne s'applique qu'aux paquets dont PERSONNE ne dépend.** `plugin-page-builder`
-est une feuille : rien ne déclare de `peerDependency` sur lui, donc son propre
-numéro est libre. `builder`, `admin`, `plugin-sdk` et `ui` sont au contraire
-nommés dans les peers publiés de `plugin-page-builder` — ils doivent GARDER le
-numéro amont exact, sinon le peer n'est plus satisfait.
+**Le numéro est celui du FORK, pas d'un paquet.** Au moment de publier, TOUS
+les paquets forkés prennent le même, y compris ceux que le correctif ne touche
+pas. C'est pnpm qui l'impose, et de la meilleure façon : il convertit
+`workspace:*` en la version que le paquet lié porte à cet instant, donc les
+peers se nomment mutuellement au même numéro et se satisfont.
 
-À vérifier après publication d'une feuille :
+Mesuré, en posant `0.0.2-alpha.66-agency.2` sur les cinq paquets et en
+empaquetant `plugin-page-builder` :
+
+```
+version du paquet : 0.0.2-alpha.66-agency.2
+  @nextlyhq/admin      -> 0.0.2-alpha.66-agency.2
+  @nextlyhq/builder    -> 0.0.2-alpha.66-agency.2
+  @nextlyhq/plugin-sdk -> 0.0.2-alpha.66-agency.2
+  @nextlyhq/ui         -> ^0.0.2-alpha.66-agency.2
+```
+
+**Publier un seul paquet en `-agency` ne marche que s'il est une FEUILLE**, et
+la première tentative s'est arrêtée là. `plugin-page-builder` en est une :
+rien ne le nomme en peer, son numéro est libre, et c'est pourquoi
+`0.0.2-alpha.66-agency.1` a pu être publié seul. `builder` n'en est pas une —
+il est nommé dans les peers publiés de `plugin-page-builder` — donc un
+correctif qui le touche ne peut PAS voyager seul.
+
+**Et l'ensemble entraîne `ui`, où rien ne change.** Le peer y est un caret, et
+un caret sur une préversion n'accepte pas un numéro antérieur. Vérifié avec le
+résolveur lui-même (`semver.satisfies`) :
+
+```
+NON  ui AMONT (0.0.2-alpha.66)          contre ^0.0.2-alpha.66-agency.2
+OK   ui FORKÉ (0.0.2-alpha.66-agency.2) contre ^0.0.2-alpha.66-agency.2
+NON  builder AMONT                      contre le peer exact
+OK   builder FORKÉ                      contre le peer exact
+```
+
+Donc cinq paquets à publier et cinq alias côté template, dès qu'un paquet
+non-feuille bouge. C'est le prix de posséder la chaîne ; il est connu d'avance
+plutôt que découvert sur un `ERESOLVE` en déploiement.
+
+À vérifier après chaque publication d'ensemble :
 
 ```bash
-node -e "const j=require('./package/package.json');console.log(j.peerDependencies)"
-# les @nextlyhq/* doivent afficher le numéro AMONT, jamais un -agency
+node -e "const j=require('./package/package.json');console.log(j.version, j.peerDependencies)"
+# la version du paquet et TOUS ses peers @nextlyhq/* doivent porter le même -agency.N
 ```
 
 ### L'alias, côté template
