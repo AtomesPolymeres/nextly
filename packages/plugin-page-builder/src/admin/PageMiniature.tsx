@@ -65,6 +65,26 @@ import type { PageRenderInputs } from "./page-render-inputs";
  */
 const DEFAULT_RENDER_WIDTH = 1280;
 
+/**
+ * AGENCY: la hauteur que la miniature ne dépasse pas, en multiples de sa
+ * largeur.
+ *
+ * La boîte tenait sa hauteur d'un `aspect-[16/10]` fixe, ce qui coupait toute
+ * page plus haute que ce rapport — une page de cinq sections ne se voyait
+ * qu'au tiers, et l'auteur ne pouvait pas savoir si le reste existait.
+ *
+ * Laisser la hauteur suivre librement le contenu était l'autre extrême, et le
+ * docblock ci-dessus dit pourquoi il a été écarté : le formulaire défilerait
+ * devant un aperçu pleine longueur. La miniature s'ajuste donc au contenu
+ * JUSQU'À cette borne, puis rétrécit l'échelle pour faire tenir le reste.
+ *
+ * Un multiple de la LARGEUR plutôt qu'un nombre de pixels, parce que la
+ * colonne du formulaire change de largeur avec la fenêtre : une borne absolue
+ * donnerait un aperçu presque carré sur un grand écran et très allongé sur un
+ * petit.
+ */
+const MAX_HEIGHT_RATIO = 1.6;
+
 export interface PageMiniatureProps {
   /** The document to draw. */
   document: BlockDocument;
@@ -87,6 +107,14 @@ export interface PageMiniatureProps {
   render: PageRenderInputs;
   /** The width to compose at before scaling. Defaults to a desktop tier. */
   renderWidth?: number;
+  /**
+   * AGENCY: la hauteur maximale de la miniature, en multiples de sa largeur.
+   *
+   * Exposé plutôt que constant parce que la bonne borne dépend de la surface :
+   * une colonne de formulaire et une vignette de liste ne supportent pas la
+   * même hauteur.
+   */
+  maxHeightRatio?: number;
 }
 
 /**
@@ -98,19 +126,29 @@ export function PageMiniature({
   siteStyles,
   render,
   renderWidth = DEFAULT_RENDER_WIDTH,
+  maxHeightRatio = MAX_HEIGHT_RATIO,
 }: PageMiniatureProps) {
   const frame = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [frameWidth, setFrameWidth] = useState(0);
+  /*
+   * AGENCY: la hauteur NATURELLE de la page, à la largeur de composition.
+   *
+   * Mesurée sur l'élément mis à l'échelle, dont la largeur est fixée à
+   * `renderWidth` — donc indépendante de celle de la boîte. C'est ce qui
+   * empêche la boucle que cette mesure invite : la hauteur de la boîte est
+   * dérivée de celle-ci, et si celle-ci en dépendait à son tour, chaque
+   * ajustement en déclencherait un autre.
+   */
+  const [contentHeight, setContentHeight] = useState(0);
+  const scaled = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const element = frame.current;
     if (!element) return;
 
-    const measure = (): void => {
-      const width = element.clientWidth;
-      // Zero means "not laid out", never "zero wide". See the module docblock.
-      setScale(width > 0 ? width / renderWidth : 1);
-    };
+    // Zéro veut dire « pas encore mis en page », jamais « large de zéro ».
+    // Voir le docblock du module.
+    const measure = (): void => setFrameWidth(element.clientWidth);
 
     measure();
 
@@ -122,7 +160,60 @@ export function PageMiniature({
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  /*
+   * AGENCY: la hauteur du contenu, observée séparément.
+   *
+   * Un effet distinct parce que le déclencheur l'est : la largeur de la boîte
+   * change quand la FENÊTRE bouge, la hauteur du contenu quand le DOCUMENT
+   * change. Les réunir ferait remesurer l'un à chaque événement de l'autre.
+   */
+  useLayoutEffect(() => {
+    const element = scaled.current;
+    if (!element) return;
+
+    const measure = (): void => setContentHeight(element.scrollHeight);
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [renderWidth]);
+
+  /*
+   * AGENCY: l'échelle, et la hauteur qui en découle.
+   *
+   * Deux contraintes, dont on prend la plus sévère. La LARGEUR donne l'échelle
+   * habituelle — la page composée à `renderWidth` tient dans la colonne. La
+   * HAUTEUR n'intervient que sur une page assez longue pour dépasser la borne,
+   * et la rétrécit alors juste assez pour qu'elle tienne entière.
+   *
+   * Avant la mise en page, `frameWidth` vaut zéro : l'échelle reste à 1 et la
+   * page se dessine non réduite. Réduire par le rapport mesuré multiplierait
+   * la page par zéro et ne dessinerait rien — une boîte vide, impossible à
+   * distinguer d'une page sans contenu.
+   */
+  const widthScale = frameWidth > 0 ? frameWidth / renderWidth : 1;
+  const maxHeight = frameWidth * maxHeightRatio;
+  const needsShrinking =
+    contentHeight > 0 &&
+    maxHeight > 0 &&
+    contentHeight * widthScale > maxHeight;
+  const scale = needsShrinking ? maxHeight / contentHeight : widthScale;
+  /*
+   * La boîte prend la hauteur de ce qu'elle montre, au lieu d'un rapport fixe.
+   *
+   * `undefined` tant que rien n'est mesuré, ce qui laisse la classe
+   * `aspect-[16/10]` décider — le même repli que l'échelle non réduite, et
+   * pour la même raison : une hauteur de zéro est indiscernable d'une page
+   * vide.
+   */
+  const frameHeight =
+    contentHeight > 0 && frameWidth > 0 ? contentHeight * scale : undefined;
 
   /*
    * Held apart from the measured scale, which changes on every frame of a
@@ -154,11 +245,29 @@ export function PageMiniature({
     <div
       ref={frame}
       data-slot="page-miniature"
-      // The box owns its own height through the aspect ratio, so a long page is
-      // clipped rather than making the form scroll past a full-length preview.
+      /*
+       * AGENCY: la hauteur vient du CONTENU, plus d'un rapport fixe.
+       *
+       * `aspect-[16/10]` reste dans les classes comme repli avant la mesure,
+       * et le rapport doit être COUPÉ dès qu'une hauteur est posée — pas
+       * seulement laissé de côté.
+       *
+       * Mesuré ici, et c'est une boucle d'emballement, pas un défaut
+       * cosmétique : un `aspect-ratio` dont la hauteur est fixée calcule la
+       * LARGEUR au lieu de la déduire. La largeur mesurée donnait l'échelle,
+       * l'échelle donnait la hauteur, la hauteur redonnait la largeur — la
+       * boîte a atteint 16 777 174 pixels de large en une poignée de trames.
+       *
+       * `overflow-hidden` demeure : la page est réduite pour tenir, mais un
+       * bloc qui déborde de sa propre boîte ne doit pas déborder de celle-ci.
+       */
       className="relative aspect-[16/10] w-full overflow-hidden rounded-md border border-border bg-background"
+      {...(frameHeight === undefined
+        ? {}
+        : { style: { height: `${frameHeight}px`, aspectRatio: "auto" } })}
     >
       <div
+        ref={scaled}
         data-slot="page-miniature-scaled"
         /*
          * ABSOLUTE, and this is load-bearing rather than cosmetic.
