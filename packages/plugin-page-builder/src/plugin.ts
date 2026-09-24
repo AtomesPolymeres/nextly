@@ -785,7 +785,24 @@ export const pageBuilder = (opts: PageBuilderOptions = {}) => {
     // the change is being written — naming the next one guesses at a release
     // that has not happened, and leaves the source tree, where core carries the
     // CURRENT version, unable to satisfy its own plugin.
-    nextly: `>=${PLUGIN_VERSION}`,
+    /*
+     * AGENCY: le plancher est la version AMONT, jamais la nôtre.
+     *
+     * Le raisonnement ci-dessus tient sur une hypothèse que ce fork casse —
+     * « a plugin at version X and a core at version X are always released
+     * together ». Chez nous les paquets forkés montent en `-agency.N` tandis
+     * que le cœur `nextly` reste à son numéro amont, jamais republié.
+     *
+     * Dérivé plutôt qu'écrit en dur, pour garder la propriété qui fait la
+     * valeur de l'original : le plancher suit la montée de l'amont tout seul.
+     * Seul le suffixe du fork est retiré.
+     *
+     * Mesuré, et c'est ce qui a motivé ce correctif : publié en
+     * `0.0.2-alpha.66-agency.2`, le plugin réclamait un cœur
+     * `>=0.0.2-alpha.66-agency.2` qui n'existe pas, et le site refusait de
+     * démarrer sur `PLUGIN_RESOLUTION_ERROR`.
+     */
+    nextly: `>=${PLUGIN_VERSION.replace(/-agency\.\d+$/, "")}`,
     // Identity metadata for the admin plugins page, mirroring package.json.
     author: "Nextly",
     homepage: "https://nextlyhq.com",

@@ -232,6 +232,56 @@ Donc cinq paquets à publier et cinq alias côté template, dès qu'un paquet
 non-feuille bouge. C'est le prix de posséder la chaîne ; il est connu d'avance
 plutôt que découvert sur un `ERESOLVE` en déploiement.
 
+**L'ensemble n'est pas « les paquets modifiés » : c'est la FERMETURE
+TRANSITIVE** de « nomme un paquet forké en peer ». Mesuré sur un `npm install`
+qui a répondu `ERESOLVE` : `plugin-seo` n'avait rien à voir avec le correctif,
+mais il déclare `plugin-sdk` en peer au numéro amont exact, et l'installation
+entière échouait. Dans ce monorepo, les paquets concernés sont
+`plugin-seo`, `plugin-form-builder` et `plugin-mcp` — seuls comptent ceux que
+le site installe réellement.
+
+Pour recalculer la fermeture après une montée amont :
+
+```bash
+node -e "
+const fs=require('fs');
+const set=new Set(['admin','builder','plugin-sdk','ui','plugin-page-builder'].map(p=>'@nextlyhq/'+p));
+for (const d of fs.readdirSync('packages')) {
+  let j; try { j=require('./packages/'+d+'/package.json'); } catch { continue; }
+  const hits=Object.keys(j.peerDependencies||{}).filter(n=>set.has(n));
+  if (hits.length && !set.has(j.name)) console.log(j.name, '->', hits.join(', '));
+}"
+```
+
+### Le plancher de cœur d'un plugin, qui casse en silence
+
+Les plugins déclarent `nextly: ` + `` `>=${PLUGIN_VERSION}` ``, et l'amont
+explique pourquoi : « every published package here versions in lockstep ».
+**Ce fork casse cette hypothèse** — les paquets forkés montent en `-agency.N`
+tandis que le cœur `nextly` reste au numéro amont, puisqu'il n'est jamais
+republié.
+
+Publié tel quel, `plugin-seo@0.0.2-alpha.66-agency.2` réclamait un cœur
+`>=0.0.2-alpha.66-agency.2`. Le site refusait de démarrer :
+
+```
+PLUGIN_RESOLUTION_ERROR
+Plugin "@nextlyhq/plugin-seo" requires Nextly >=0.0.2-alpha.66-agency.2,
+but this is Nextly 0.0.2-alpha.66.
+```
+
+Le suffixe est donc retiré au calcul du plancher, dans `plugin-seo` et dans
+`plugin-page-builder`. Dérivé plutôt qu'écrit en dur, pour garder la propriété
+qui fait la valeur de l'original : le plancher suit la montée de l'amont tout
+seul.
+
+**`plugin-page-builder` semblait exempt, et ne l'était pas.** Son `dist`
+inline la version à la COMPILATION, donc un build lancé avant le bump y figeait
+le numéro amont — `agency.1` est passé pour cette seule raison. `plugin-seo`
+lit la sienne à l'EXÉCUTION depuis le `package.json` livré, d'où l'échec. Une
+différence d'empaquetage, pas de conception : compiler après le bump aurait
+cassé les deux. Les deux portent le correctif.
+
 À vérifier après chaque publication d'ensemble :
 
 ```bash
