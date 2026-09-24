@@ -43,6 +43,13 @@ export const SUPPORTED_PROP_TYPES = [
   "number",
   "checkbox",
   "select",
+  // AGENCY: ajouté. Un bloc déclarant un prop `media` — `core/image` le fait
+  // pour son `mediaId` — affichait « Not editable here (media) », et aucun
+  // chemin ne permettait de choisir une image depuis la médiathèque. Le
+  // contrôle existe pourtant : `MediaPickerDialog`, exporté par
+  // `@nextlyhq/admin` et déjà utilisé par les champs upload et le texte
+  // riche. Il n'était simplement pas branché ici.
+  "media",
 ] as const;
 
 export type SupportedPropType = (typeof SUPPORTED_PROP_TYPES)[number];

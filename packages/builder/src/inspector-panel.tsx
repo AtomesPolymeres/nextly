@@ -23,6 +23,7 @@
  * @module inspector-panel
  */
 
+import { MediaPickerDialog, type Media } from "@nextlyhq/admin";
 import {
   findNode,
   type BreakpointId,
@@ -33,6 +34,7 @@ import {
 } from "@nextlyhq/blocks-engine";
 import type { BlockResolver, PageStyleCascade } from "@nextlyhq/blocks-react";
 import {
+  Button,
   Checkbox,
   Input,
   Label,
@@ -636,6 +638,81 @@ function ContentFields({
   );
 }
 
+/**
+ * AGENCY: le contrôle qui manquait pour les props de type `media`.
+ *
+ * `MediaPickerDialog` vient de `@nextlyhq/admin` : c'est le même sélecteur
+ * que les champs upload et le texte riche, donc l'auteur retrouve exactement
+ * l'écran qu'il connaît, et la médiathèque n'est pas réimplémentée.
+ *
+ * ## Ce qui est stocké
+ *
+ * L'ID du média, pas son URL. C'est ce que `core/image` attend dans son prop
+ * `mediaId`, et c'est ce qui donne un vrai lien : `alt`, largeur et hauteur
+ * suivent à la lecture, et le fichier reste retrouvable s'il est renommé.
+ * Coller une URL dans `src` — le contournement d'avant — ne garde aucun lien.
+ *
+ * ## Pourquoi un bouton « Retirer » séparé
+ *
+ * Le dialogue ne sait que CHOISIR. Sans ce bouton, une image posée par erreur
+ * ne pourrait plus jamais être enlevée — seulement remplacée.
+ */
+function MediaField({
+  id,
+  prop,
+  onCommit,
+}: {
+  id: string;
+  prop: EditableProp;
+  onCommit: (name: string, value: unknown) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(false);
+  const current = typeof prop.value === "string" ? prop.value : "";
+
+  return (
+    <div className="nx-inspector__field">
+      <Label htmlFor={id}>{fieldLabel(prop.name)}</Label>
+
+      <div className="nx-inspector__media">
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          onClick={() => setOpen(true)}
+        >
+          {current === "" ? "Choose an image" : "Replace image"}
+        </Button>
+
+        {current !== "" && (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onCommit(prop.name, "")}
+          >
+            Remove
+          </Button>
+        )}
+      </div>
+
+      <MediaPickerDialog
+        mode="single"
+        open={open}
+        onOpenChange={setOpen}
+        // Un Set, pas un tableau : c'est ce que le dialogue attend, et le
+        // compilateur l'a dit tout de suite.
+        initialSelectedIds={current === "" ? undefined : new Set([current])}
+        onSelect={(media: Media[]) => {
+          // `single` garantit une entrée, mais une annulation peut répondre
+          // vide : ne rien écrire plutôt que d'effacer le choix précédent.
+          const picked = media[0];
+          if (picked !== undefined) onCommit(prop.name, picked.id);
+          setOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
 function PropField({
   prop,
   onCommit,
@@ -673,6 +750,10 @@ function PropField({
         <Label htmlFor={id}>{fieldLabel(prop.name)}</Label>
       </div>
     );
+  }
+
+  if (prop.schema.type === "media") {
+    return <MediaField id={id} prop={prop} onCommit={onCommit} />;
   }
 
   if (prop.schema.type === "select") {

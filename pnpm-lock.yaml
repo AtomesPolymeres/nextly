@@ -911,6 +911,9 @@ importers:
         specifier: workspace:*
         version: link:../blocks-react
     devDependencies:
+      '@nextlyhq/admin':
+        specifier: workspace:*
+        version: link:../admin
       '@nextlyhq/eslint-config':
         specifier: workspace:*
         version: link:../eslint-config

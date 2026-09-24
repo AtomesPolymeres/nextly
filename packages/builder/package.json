@@ -74,7 +74,8 @@
     "@nextlyhq/ui": "workspace:^",
     "lucide-react": ">=0.400.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@nextlyhq/admin": "0.0.2-alpha.66"
   },
   "devDependencies": {
     "@nextlyhq/eslint-config": "workspace:*",
@@ -96,7 +97,8 @@
     "tailwindcss": "^4.3.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "@nextlyhq/admin": "workspace:*"
   },
   "publishConfig": {
     "access": "public",
