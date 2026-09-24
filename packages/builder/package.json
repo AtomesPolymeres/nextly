@@ -70,7 +70,6 @@
     "@nextlyhq/blocks-react": "workspace:*"
   },
   "peerDependencies": {
-    "@nextlyhq/admin": "0.0.2-alpha.66",
     "@nextlyhq/plugin-sdk": "workspace:*",
     "@nextlyhq/ui": "workspace:^",
     "lucide-react": ">=0.400.0",
@@ -78,7 +77,6 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@nextlyhq/admin": "workspace:*",
     "@nextlyhq/eslint-config": "workspace:*",
     "@nextlyhq/module-specifiers": "workspace:*",
     "@nextlyhq/plugin-sdk": "workspace:*",

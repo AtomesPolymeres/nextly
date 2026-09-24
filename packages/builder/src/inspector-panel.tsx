@@ -23,7 +23,6 @@
  * @module inspector-panel
  */
 
-import { MediaPickerDialog, type Media } from "@nextlyhq/admin";
 import {
   findNode,
   type BreakpointId,
@@ -33,6 +32,7 @@ import {
   type StyleState,
 } from "@nextlyhq/blocks-engine";
 import type { BlockResolver, PageStyleCascade } from "@nextlyhq/blocks-react";
+import { MediaPickerDialog, type Media } from "@nextlyhq/plugin-sdk/admin";
 import {
   Button,
   Checkbox,
@@ -641,7 +641,9 @@ function ContentFields({
 /**
  * AGENCY: le contrôle qui manquait pour les props de type `media`.
  *
- * `MediaPickerDialog` vient de `@nextlyhq/admin` : c'est le même sélecteur
+ * `MediaPickerDialog` vient de `@nextlyhq/plugin-sdk/admin` — la SEULE route
+ * sanctionnée vers les composants de l'admin, celle que `layering.test.ts`
+ * autorise. C'est le même sélecteur
  * que les champs upload et le texte riche, donc l'auteur retrouve exactement
  * l'écran qu'il connaît, et la médiathèque n'est pas réimplémentée.
  *

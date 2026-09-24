@@ -148,6 +148,11 @@ describe("inspectSelection", () => {
       "number",
       "checkbox",
       "select",
+      // AGENCY: ajouté avec son contrôle dans `PropField`. Ce test existe
+      // précisément pour empêcher d'ajouter l'un sans l'autre — un type
+      // déclaré supporté mais sans contrôle tomberait silencieusement dans
+      // le « Not editable here » qu'il était censé faire disparaître.
+      "media",
     ]);
   });
 

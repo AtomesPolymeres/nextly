@@ -611,3 +611,19 @@ export type {
   PluginCollectionView,
   PluginMenuItem,
 } from "nextly";
+
+/**
+ * AGENCY: le sélecteur de médias de l'admin, exposé sur la route sanctionnée.
+ *
+ * `@nextlyhq/builder` ne peut pas — et ne doit pas — importer
+ * `@nextlyhq/admin` directement : `layering.test.ts` l'interdit, et cette
+ * entrée `/admin` est décrite là-bas comme « the ONLY sanctioned route to
+ * admin components ». Le builder en a pourtant besoin pour son contrôle de
+ * prop `media`, qui n'existait pas.
+ *
+ * Réexporté ici plutôt que dépendu là-bas : la frontière reste celle que
+ * l'amont a dessinée, et c'est aussi la forme qu'une contribution amont
+ * prendrait.
+ */
+export { MediaPickerDialog } from "@nextlyhq/admin";
+export type { Media, MediaPickerDialogProps } from "@nextlyhq/admin";
