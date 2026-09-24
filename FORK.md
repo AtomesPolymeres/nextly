@@ -45,10 +45,22 @@ aucun.
 
 **À supprimer quand** `media` entre dans `SUPPORTED_PROP_TYPES` en amont.
 
-**Reste à faire.** `EDITABLE_EXPOSED_TYPES` dans
-`packages/builder/src/instance-inspector.ts` exclut aussi `image` : une
-propriété exposée de type image reste inéditable sur une instance de
-composant. Même correctif à appliquer.
+**Étendu aux instances.** `EDITABLE_EXPOSED_TYPES` dans
+`packages/builder/src/instance-inspector.ts` excluait `image` pour une raison
+qui n'en était plus une — « an image needs a picker this package cannot
+reach ». L'obstacle était la frontière de paquets, pas l'absence de contrôle,
+et `plugin-sdk/admin` l'a levée. Une propriété exposée de type image
+s'échange désormais sur chaque instance, par le même dialogue.
+
+La ligne porte déjà son bouton « Reset », qui retire la surcharge ; le
+contrôle n'offre donc pas de « Remove », qui écrirait une image VIDE — un
+geste différent qui se lirait pareil.
+
+**Non vérifié à l'exécution.** `instance-inspector-panel.test.tsx` fait partie
+des fichiers en échec préexistant (`EventSource is not defined`), donc le
+contrôle lui-même n'est couvert par aucun test qui tourne. Ce qui EST vérifié :
+le drapeau `supported` de la ligne, par `instance-inspector.test.ts`, dont la
+cassure a été confirmée.
 
 ---
 

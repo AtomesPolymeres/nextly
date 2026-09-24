@@ -35,6 +35,10 @@ import {
   richTextToPlainText,
   type OverrideValue,
 } from "@nextlyhq/blocks-engine";
+// AGENCY: la route sanctionnée vers les composants d'admin. `layering.test.ts`
+// interdit à ce paquet de dépendre de `@nextlyhq/admin` directement, et cette
+// entrée `/admin` est la seule ouverture prévue.
+import { MediaPickerDialog, type Media } from "@nextlyhq/plugin-sdk/admin";
 import {
   Button,
   Checkbox,
@@ -333,6 +337,9 @@ function ExposedControl({
   if (row.type === "visibility") {
     return <ExposedVisibilityField id={id} row={row} onSet={onSet} />;
   }
+  if (row.type === "image") {
+    return <ExposedImageField id={id} row={row} onSet={onSet} />;
+  }
   if (row.type === "select") {
     return (
       <Select
@@ -423,7 +430,19 @@ function dataOf(value: object): string {
  * would strand the property instead.
  */
 function representable(row: ExposedRow): boolean {
-  if (row.type === "visibility" || row.type === "select") return true;
+  /*
+   * AGENCY: l'image rejoint les deux contrôles qui passent toujours, et pour
+   * l'argument déjà écrit au-dessus : le sélecteur REMPLACE la valeur au lieu
+   * de la reprendre. Une valeur qu'il ne sait pas afficher se répare donc en
+   * s'en servant, alors que masquer la ligne abandonnerait la propriété.
+   */
+  if (
+    row.type === "visibility" ||
+    row.type === "select" ||
+    row.type === "image"
+  ) {
+    return true;
+  }
   const { value } = row;
   if (value === undefined || value === null) return true;
   return typeof value !== "object";
@@ -500,6 +519,62 @@ function ExposedTextField({
  * serve the node unless the definition gates it itself, and the source badge
  * beside the box says which it is.
  */
+/**
+ * AGENCY: le sélecteur de médias, pour une propriété exposée de type image.
+ *
+ * Jumeau de `MediaField` dans l'inspecteur de BLOC, et délibérément pas une
+ * fonction partagée : les deux écrivent dans des endroits différents — l'un
+ * une prop du nœud, l'autre une surcharge d'instance identifiée par l'id de
+ * la propriété exposée — et n'offrent pas les mêmes issues. Ici la ligne
+ * porte déjà son bouton « Reset », qui retire la surcharge et rend à
+ * l'instance la valeur du composant ; un bouton « Remove » de plus écrirait
+ * une image VIDE, ce qui n'est pas la même chose et se lirait pareil.
+ *
+ * Le libellé dit lequel des deux gestes il s'agit — choisir la première fois,
+ * remplacer ensuite — parce qu'une surcharge déjà posée est invisible
+ * autrement : la ligne montre un identifiant de média, pas une vignette.
+ */
+function ExposedImageField({
+  id,
+  row,
+  onSet,
+}: {
+  id: string;
+  row: ExposedRow;
+  onSet: (id: string, value: OverrideValue) => void;
+}): React.JSX.Element {
+  const [open, setOpen] = React.useState(false);
+  const current = typeof row.value === "string" ? row.value : "";
+
+  return (
+    <>
+      <Button
+        id={id}
+        type="button"
+        variant="outline"
+        onClick={() => setOpen(true)}
+      >
+        {current === "" ? "Choose an image" : "Replace image"}
+      </Button>
+
+      <MediaPickerDialog
+        mode="single"
+        open={open}
+        onOpenChange={setOpen}
+        // Un `Set`, pas un tableau : c'est ce que le dialogue attend.
+        initialSelectedIds={current === "" ? undefined : new Set([current])}
+        onSelect={(media: Media[]) => {
+          // `single` garantit une entrée, mais une annulation peut répondre
+          // vide : ne rien écrire plutôt qu'effacer la surcharge en place.
+          const picked = media[0];
+          if (picked !== undefined) onSet(row.id, picked.id);
+          setOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
 function ExposedVisibilityField({
   id,
   row,

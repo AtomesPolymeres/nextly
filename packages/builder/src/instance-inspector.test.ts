@@ -218,13 +218,17 @@ describe("the rows", () => {
     expect(rows.map(row => [row.type, row.supported])).toEqual([
       ["text", true],
       ["select", true],
-      ["image", false],
+      // AGENCY: éditable depuis que le sélecteur de médias est atteignable par
+      // `plugin-sdk/admin`. L'exclusion tenait à la frontière de paquets, pas
+      // à l'absence de contrôle.
+      ["image", true],
     ]);
     expect([...EDITABLE_EXPOSED_TYPES]).toEqual([
       "text",
       "select",
       "link",
       "visibility",
+      "image",
     ]);
   });
 

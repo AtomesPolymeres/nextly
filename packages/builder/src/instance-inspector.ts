@@ -45,18 +45,30 @@ import type { BuilderOp, NodePatch } from "./ops";
  * Named as a set rather than inferred from what the switch happens to handle,
  * for the reason `SUPPORTED_PROP_TYPES` is: an exposed type with no control is
  * a KNOWN gap the row states, never a silent fallthrough. A link is edited as
- * the address its prop holds and visibility as shown-or-hidden; rich text and
- * images have no control here yet — a passage is edited on the canvas, and an
- * image needs a picker this package cannot reach — and a row of either still
+ * the address its prop holds and visibility as shown-or-hidden; rich text has
+ * no control here yet — a passage is edited on the canvas — and its row still
  * shows its value and its source, and still offers a reset, because
  * withholding the row would present a component as exposing less than it
  * does.
+ *
+ * AGENCY: `image` est ici depuis que le sélecteur de médias est atteignable.
+ *
+ * Il en était exclu pour une raison qui n'en est plus une — « an image needs a
+ * picker this package cannot reach ». Ce paquet ne peut effectivement pas
+ * importer `@nextlyhq/admin`, `layering.test.ts` l'interdit ; mais
+ * `plugin-sdk/admin` réexporte désormais `MediaPickerDialog`, et c'est la
+ * route sanctionnée. L'obstacle était la frontière, pas le contrôle.
+ *
+ * Sans cette entrée, une propriété exposée de type image restait affichée et
+ * inéditable sur chaque instance — le composant promettait une image
+ * remplaçable que personne ne pouvait remplacer.
  */
 export const EDITABLE_EXPOSED_TYPES = [
   "text",
   "select",
   "link",
   "visibility",
+  "image",
 ] as const;
 
 /** One exposed property, with everything a row needs to draw itself. */
