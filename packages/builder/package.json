@@ -70,14 +70,15 @@
     "@nextlyhq/blocks-react": "workspace:*"
   },
   "peerDependencies": {
+    "@nextlyhq/admin": "0.0.2-alpha.66",
     "@nextlyhq/plugin-sdk": "workspace:*",
     "@nextlyhq/ui": "workspace:^",
     "lucide-react": ">=0.400.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@nextlyhq/admin": "0.0.2-alpha.66"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@nextlyhq/admin": "workspace:*",
     "@nextlyhq/eslint-config": "workspace:*",
     "@nextlyhq/module-specifiers": "workspace:*",
     "@nextlyhq/plugin-sdk": "workspace:*",
@@ -97,8 +98,7 @@
     "tailwindcss": "^4.3.2",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.0",
-    "@nextlyhq/admin": "workspace:*"
+    "vitest": "^4.1.0"
   },
   "publishConfig": {
     "access": "public",
