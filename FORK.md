@@ -52,6 +52,57 @@ composant. Même correctif à appliquer.
 
 ---
 
+## `@nextlyhq/plugin-page-builder` — l'image ne se dessinait pas dans l'admin
+
+**Le symptôme.** Un `core/image` portant un `mediaId` s'affichait sur la page
+publiée et restait invisible partout dans l'admin : rien dans le canvas
+d'édition, rien dans la miniature de l'écran d'entrée. Sélectionner une image
+avec le contrôle ajouté plus haut donnait donc un bloc vide, ce qui se lisait
+comme un sélecteur cassé alors qu'il enregistrait correctement.
+
+**La cause, décrite par l'amont lui-même.** `page-render-inputs.ts` portait une
+section « What is NOT here » qui l'énonçait mot pour mot : aucune des deux
+surfaces ne fournit de `context`, donc toutes deux retombent sur
+`createStandaloneContext()`, dont le résolveur média répond `null`. Le commentaire
+renvoyait la correction « à qui donnera à l'admin un contexte de rendu en
+lecture seule ».
+
+**Le correctif.** `packages/plugin-page-builder/src/admin/admin-render-context.ts`
+est ce contexte. Il résout un identifiant contre la bibliothèque de médias de
+l'admin, mémorise les résolutions réussies — le canvas se redessine à chaque
+frappe et `renderImage` appelle `resolveMedia` à chaque rendu — et n'enregistre
+jamais les échecs, pour qu'une coupure d'une seconde ne devienne pas une panne
+durable.
+
+Il est distribué depuis `pageRenderInputs`, et non aux deux points d'appel : la
+lacune était la même des deux côtés, et c'est exactement la dérive silencieuse
+que cette dérivation unique existe pour empêcher. `context` y est REQUIS en
+sortie, donc aucune surface ne peut l'oublier.
+
+Rien à changer dans `@nextlyhq/builder` : son canvas type déjà `render` comme
+`Omit<PageRendererProps, "document" | "siteStyles">` et le déverse tel quel dans
+`PageRenderer`.
+
+**La frontière.** `getMediaById` est réexporté par `@nextlyhq/admin` puis par
+`@nextlyhq/plugin-sdk/admin` — la même route sanctionnée que
+`MediaPickerDialog`, et pour un besoin symétrique : le sélecteur ÉCRIT
+l'identifiant, celui-ci le RELIT.
+
+**Ce que ça ne résout pas.** `data` et `resolveEntryPath` restent ceux du
+contexte autonome. Les blocs dynamiques et les liens vers des entrées se
+dessinent dans l'admin exactement comme avant.
+
+**Vérifié.** Sur le playground, même document et même page : sans le correctif
+le canvas ne contient aucune balise `<img>` ; avec, il contient l'image à
+1456×816 avec l'`alt` venu de la base — donc arrivé par `resolveMedia` et non
+par le document. Cinq tests unitaires, chacun vu échouer pour sa propre raison.
+
+**Upstream.** Issue à ouvrir — c'est la lacune que l'amont documentait.
+
+**À supprimer quand** l'amont fournit lui-même un contexte de rendu d'admin.
+
+---
+
 ## Publication
 
 ### TOUJOURS `pnpm publish`, jamais `npm publish`
@@ -77,6 +128,21 @@ npm pack @atomespolymeres/builder@<version> --registry=https://npm.pkg.github.co
 tar xzf *.tgz && grep -c "workspace:" package/package.json   # doit valoir 0
 ```
 
+### `provenance` doit être coupée pour un publish local
+
+Chaque `package.json` porte `publishConfig.provenance: true`. La provenance
+s'appuie sur l'OIDC du runner GitHub Actions ; hors CI il n'y a pas de
+fournisseur, et npm refuse AVANT de téléverser quoi que ce soit :
+
+```
+npm error code EUSAGE
+npm error Automatic provenance generation not supported for provider: null
+```
+
+Elle se coupe donc en même temps que le renommage ci-dessous, et se restaure
+avec lui. L'échec est propre — rien n'est publié — mais il frappe les trois
+paquets d'affilée si on ne le sait pas.
+
 ### Le renommage, au publish seulement
 
 GitHub Packages exige que le scope corresponde au propriétaire du dépôt, donc
@@ -88,13 +154,45 @@ est donc renommé juste le temps de publier, puis restauré.
 
 ```bash
 pnpm turbo build --filter=@nextlyhq/builder...   # le dist DOIT exister
-# renommer package.json en @atomespolymeres/builder
+# renommer en @atomespolymeres/builder ET mettre publishConfig.provenance à false
 NODE_AUTH_TOKEN=$(gh auth token) pnpm publish --tag alpha --no-git-checks \
   --registry=https://npm.pkg.github.com
 # restaurer package.json
 ```
 
+**`NODE_AUTH_TOKEN` sert aussi à INSTALLER.** Le `~/.npmrc` écrit
+`//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`, donc un `npm install`
+dans un shell où la variable est absente échoue en `401 Unauthorized` sur le
+premier paquet de l'orga — pas sur un problème de droits.
+
 `--tag alpha` est obligatoire : npm refuse une préversion sans tag explicite.
+
+### Les versions : `-agency.N` au-dessus du numéro amont
+
+Une version publiée est IMMUABLE, donc republier un correctif au-dessus d'une
+version déjà sortie demande un nouveau numéro. Le schéma retenu :
+
+```
+0.0.2-alpha.66-agency.1   # premier correctif maison au-dessus d'alpha.66
+0.0.2-alpha.66-agency.2   # le suivant
+0.0.2-alpha.67-agency.1   # l'amont est monté, le compteur repart à 1
+```
+
+La filiation reste lisible dans le numéro lui-même, sans table de
+correspondance à tenir à la main.
+
+**Ne s'applique qu'aux paquets dont PERSONNE ne dépend.** `plugin-page-builder`
+est une feuille : rien ne déclare de `peerDependency` sur lui, donc son propre
+numéro est libre. `builder`, `admin`, `plugin-sdk` et `ui` sont au contraire
+nommés dans les peers publiés de `plugin-page-builder` — ils doivent GARDER le
+numéro amont exact, sinon le peer n'est plus satisfait.
+
+À vérifier après publication d'une feuille :
+
+```bash
+node -e "const j=require('./package/package.json');console.log(j.peerDependencies)"
+# les @nextlyhq/* doivent afficher le numéro AMONT, jamais un -agency
+```
 
 ### L'alias, côté template
 
