@@ -38,6 +38,27 @@
  * the components need the constructor to exist rather than to report. Installed
  * only when the runtime has none, so a real implementation is never replaced.
  *
+ * ## AGENCY: `EventSource` existe
+ *
+ * Même motif que `ResizeObserver`, et même raison de le traiter ici plutôt que
+ * fichier par fichier. jsdom ne l'implémente pas, et le module admin y touche à
+ * l'ÉVALUATION — donc l'échec arrive à l'import du fichier de test, avant la
+ * collecte : `0 test`, un `ReferenceError` qui ne nomme rien de ce qui est
+ * testé, et une suite entière qui disparaît du décompte sans qu'aucune
+ * assertion n'ait échoué.
+ *
+ * Sept fichiers tombaient ainsi — quatre dans `builder`, trois dans
+ * `plugin-page-builder` — et la parade employée ailleurs est un
+ * `vi.mock("@nextlyhq/plugin-sdk/admin")` par fichier, que ces sept n'ont pas.
+ * Une règle que chaque fichier doit se rappeler est exactement ce que ce
+ * module existe pour supprimer.
+ *
+ * Un bouchon, pas un polyfill : rien ici n'assied quoi que ce soit sur du
+ * Server-Sent Events. Ce qui est attendu, c'est que le constructeur existe.
+ * `readyState` vaut `CONNECTING` et rien n'émet jamais, ce qui est la seule
+ * réponse honnête d'un flux qui ne se connectera pas — préférable à `OPEN`,
+ * qui ferait croire à une connexion établie.
+ *
  * ## Guarded, because most files here have no DOM
  *
  * Both packages that load this run `environment: "node"` and opt into jsdom
@@ -70,6 +91,27 @@ if ("document" in globalThis) {
       observe(): void {}
       unobserve(): void {}
       disconnect(): void {}
+    };
+  }
+  if (!("EventSource" in globalThis)) {
+    (globalThis as { EventSource?: unknown }).EventSource = class {
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSED = 2;
+      readonly readyState = 0;
+      readonly url: string;
+      onopen: unknown = null;
+      onmessage: unknown = null;
+      onerror: unknown = null;
+      constructor(url: string) {
+        this.url = url;
+      }
+      addEventListener(): void {}
+      removeEventListener(): void {}
+      dispatchEvent(): boolean {
+        return false;
+      }
+      close(): void {}
     };
   }
   const { cleanup } = await import("@testing-library/react");

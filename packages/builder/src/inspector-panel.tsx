@@ -696,21 +696,34 @@ function MediaField({
         )}
       </div>
 
-      <MediaPickerDialog
-        mode="single"
-        open={open}
-        onOpenChange={setOpen}
-        // Un Set, pas un tableau : c'est ce que le dialogue attend, et le
-        // compilateur l'a dit tout de suite.
-        initialSelectedIds={current === "" ? undefined : new Set([current])}
-        onSelect={(media: Media[]) => {
-          // `single` garantit une entrée, mais une annulation peut répondre
-          // vide : ne rien écrire plutôt que d'effacer le choix précédent.
-          const picked = media[0];
-          if (picked !== undefined) onCommit(prop.name, picked.id);
-          setOpen(false);
-        }}
-      />
+      {/*
+        AGENCY: monté seulement À L'OUVERTURE, et c'est une correction, pas une
+        optimisation. `MediaPickerDialog` appelle `useQueryClient` et ses
+        requêtes dès le rendu, sans regarder `open` — monté en permanence, il
+        exige donc un `QueryClientProvider` partout où l'inspecteur est rendu.
+        L'admin réel en fournit un ; les tests non, et le panneau entier
+        échouait sur « No QueryClient set » sans que rien ne nomme le média.
+
+        Le monter à la demande évite aussi une requête de bibliothèque par
+        image de la page, pour un dialogue que personne n'a ouvert.
+      */}
+      {open && (
+        <MediaPickerDialog
+          mode="single"
+          open={open}
+          onOpenChange={setOpen}
+          // Un Set, pas un tableau : c'est ce que le dialogue attend, et le
+          // compilateur l'a dit tout de suite.
+          initialSelectedIds={current === "" ? undefined : new Set([current])}
+          onSelect={(media: Media[]) => {
+            // `single` garantit une entrée, mais une annulation peut répondre
+            // vide : ne rien écrire plutôt que d'effacer le choix précédent.
+            const picked = media[0];
+            if (picked !== undefined) onCommit(prop.name, picked.id);
+            setOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -647,12 +647,33 @@ describe("two options the control once spelled alike", () => {
 });
 
 describe("rows with no control", () => {
-  it("lists a type it cannot edit yet, with its value, rather than hiding it", () => {
+  /*
+   * AGENCY: ce cas affirmait l'inverse, et il avait raison de le faire à
+   * l'époque — l'image n'avait pas de contrôle ici. Elle en a un depuis que le
+   * sélecteur de médias est atteignable par `plugin-sdk/admin`, donc le cas
+   * couvre désormais le comportement qui l'a remplacé plutôt que de disparaître.
+   *
+   * Le libellé DIT lequel des deux gestes il s'agit : une surcharge déjà posée
+   * est invisible autrement, la ligne ne montrant qu'un identifiant de média et
+   * jamais une vignette.
+   *
+   * Le champ texte reste absent, et c'est la moitié du cas qui n'a pas changé :
+   * un identifiant de média n'est pas une adresse à taper.
+   */
+  it("offers the picker for an image whose value is a media id", () => {
     mount(instance());
 
-    const note = screen.getByText(/Not editable here yet \(image\)/);
-    expect(note.textContent).toContain("hero.png");
+    /*
+     * Interrogé par « Picture », le libellé de la ligne, et non par le texte
+     * du bouton : la ligne pose un `<Label htmlFor>` sur le contrôle, et c'est
+     * lui qui fournit le nom accessible. Le geste se lit dans le TEXTE, que
+     * l'assertion suivante vérifie — l'interroger par ce texte échouerait sur
+     * un contrôle parfaitement correct.
+     */
+    const picker = screen.getByRole("button", { name: "Picture" });
+    expect(picker.textContent).toBe("Replace image");
     expect(screen.queryByRole("textbox", { name: "Picture" })).toBeNull();
+    expect(screen.queryByText(/Not editable here yet \(image\)/)).toBeNull();
   });
 
   it("shows a structured value in words — rich text as its text, a list by its count, other data as data — rather than as nothing", () => {

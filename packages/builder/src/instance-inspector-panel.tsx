@@ -431,18 +431,19 @@ function dataOf(value: object): string {
  */
 function representable(row: ExposedRow): boolean {
   /*
-   * AGENCY: l'image rejoint les deux contrôles qui passent toujours, et pour
-   * l'argument déjà écrit au-dessus : le sélecteur REMPLACE la valeur au lieu
-   * de la reprendre. Une valeur qu'il ne sait pas afficher se répare donc en
-   * s'en servant, alors que masquer la ligne abandonnerait la propriété.
+   * AGENCY: l'image N'EST PAS ici, et l'y mettre était une faute.
+   *
+   * L'argument du select avait été recopié — « le contrôle REMPLACE la valeur
+   * au lieu de la reprendre » — mais il ne tient que sur un espace de valeurs
+   * FERMÉ. Une image exposée peut pointer une prop qui tient un tableau ou un
+   * objet, et le sélecteur y écrirait alors un identifiant de média par-dessus
+   * une valeur d'une tout autre forme.
+   *
+   * Le test de structure en dessous suffit : un identifiant de média est une
+   * chaîne, donc il passe, et une valeur structurée retombe sur la phrase qui
+   * la montre sans proposer de l'écraser.
    */
-  if (
-    row.type === "visibility" ||
-    row.type === "select" ||
-    row.type === "image"
-  ) {
-    return true;
-  }
+  if (row.type === "visibility" || row.type === "select") return true;
   const { value } = row;
   if (value === undefined || value === null) return true;
   return typeof value !== "object";
@@ -557,20 +558,33 @@ function ExposedImageField({
         {current === "" ? "Choose an image" : "Replace image"}
       </Button>
 
-      <MediaPickerDialog
-        mode="single"
-        open={open}
-        onOpenChange={setOpen}
-        // Un `Set`, pas un tableau : c'est ce que le dialogue attend.
-        initialSelectedIds={current === "" ? undefined : new Set([current])}
-        onSelect={(media: Media[]) => {
-          // `single` garantit une entrée, mais une annulation peut répondre
-          // vide : ne rien écrire plutôt qu'effacer la surcharge en place.
-          const picked = media[0];
-          if (picked !== undefined) onSet(row.id, picked.id);
-          setOpen(false);
-        }}
-      />
+      {/*
+        AGENCY: monté seulement À L'OUVERTURE, et c'est une correction, pas une
+        optimisation. `MediaPickerDialog` appelle `useQueryClient` et ses
+        requêtes dès le rendu, sans regarder `open` — monté en permanence, il
+        exige donc un `QueryClientProvider` partout où l'inspecteur est rendu.
+        L'admin réel en fournit un ; les tests non, et le panneau entier
+        échouait sur « No QueryClient set » sans que rien ne nomme le média.
+
+        Le monter à la demande évite aussi une requête de bibliothèque par
+        image de la page, pour un dialogue que personne n'a ouvert.
+      */}
+      {open && (
+        <MediaPickerDialog
+          mode="single"
+          open={open}
+          onOpenChange={setOpen}
+          // Un `Set`, pas un tableau : c'est ce que le dialogue attend.
+          initialSelectedIds={current === "" ? undefined : new Set([current])}
+          onSelect={(media: Media[]) => {
+            // `single` garantit une entrée, mais une annulation peut répondre
+            // vide : ne rien écrire plutôt qu'effacer la surcharge en place.
+            const picked = media[0];
+            if (picked !== undefined) onSet(row.id, picked.id);
+            setOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
