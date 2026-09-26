@@ -154,7 +154,7 @@ import {
 
 import { classUsageOf } from "../class-usage";
 import { emptyBlockDocument } from "../fields/blocks-document";
-import { acceptedKinds } from "../fields/blocks-options";
+import { acceptedKinds, blocksOptionsOf } from "../fields/blocks-options";
 import { hostFetchPolicy, readRemotePatterns } from "../host-policy";
 import {
   classOverrideOf,
@@ -170,6 +170,11 @@ import {
   type ComponentLibraryRead,
 } from "./component-library-client";
 import { DocumentStatusPill } from "./DocumentStatusPill";
+import {
+  offerableComponentsUnder,
+  offerableDefinitions,
+  offerablePatternsUnder,
+} from "./insert-allow";
 import { pageRenderInputs, readDocumentLimits } from "./page-render-inputs";
 import { PageBuilderCard } from "./PageBuilderCard";
 import { useMayCreatePattern } from "./pattern-capability-client";
@@ -660,6 +665,9 @@ export function BlocksField<TFieldValues extends FieldValues = FieldValues>({
   // What an empty document has to be for THIS field. Asked once and passed
   // down, so the resting card and the open editor cannot seed different kinds.
   const kinds = acceptedKinds(declaration);
+  // Which blocks the field admits, read from the same declaration the
+  // validator reads — so the insert panel offers only what a save accepts.
+  const allow = blocksOptionsOf(declaration).allow;
 
   const editable = canEditBlocks({ readOnly, disabled });
 
@@ -709,6 +717,7 @@ export function BlocksField<TFieldValues extends FieldValues = FieldValues>({
       key={String(field.value === undefined ? "empty" : "seeded")}
       initialValue={field.value}
       kinds={kinds}
+      allow={allow}
       onCommit={field.onChange}
       onClose={() => setOpen(false)}
       // Named and controlled so the editor can record its live document as
@@ -2139,6 +2148,8 @@ function InsertPanelWithLibrary({
   ...props
 }: {
   editor: React.ComponentProps<typeof InsertPanel>["editor"];
+  /** The blocks the field admits; `undefined` offers everything registered. */
+  definitions: React.ComponentProps<typeof InsertPanel>["definitions"];
   categoryOrder: React.ComponentProps<typeof InsertPanel>["categoryOrder"];
   beginInsertDrag: React.ComponentProps<typeof InsertPanel>["beginInsertDrag"];
   /**
@@ -2210,6 +2221,7 @@ function tierStateOf(read: {
 function BlocksEditor<TFieldValues extends FieldValues = FieldValues>({
   initialValue,
   kinds,
+  allow,
   onCommit,
   onClose,
   name,
@@ -2218,6 +2230,11 @@ function BlocksEditor<TFieldValues extends FieldValues = FieldValues>({
   initialValue: unknown;
   /** The kinds the field accepts, so a seeded document is one it will take. */
   kinds: readonly DocumentKind[] | undefined;
+  /**
+   * The block types the field admits, or `undefined` for every registered
+   * one. Narrows what the insert panel offers; the save enforces it anyway.
+   */
+  allow: readonly string[] | undefined;
   onCommit: (value: BlockDocument) => void;
   onClose: () => void;
   name: Path<TFieldValues>;
@@ -2724,25 +2741,44 @@ function BlocksEditor<TFieldValues extends FieldValues = FieldValues>({
     [componentLibrary.definitions, componentLibrary.truncated, documentLimits]
   );
   const offered = useMemo<ComponentLibraryRead>(() => {
-    const components = withoutSelf(
-      componentLibrary.components,
-      initialDocument,
-      identity,
-      componentGraph
+    // `allow` narrows the tiles only. The lookup stays whole: an instance
+    // already on the page still has to draw.
+    const components = offerableComponentsUnder(
+      withoutSelf(
+        componentLibrary.components,
+        initialDocument,
+        identity,
+        componentGraph
+      ),
+      allow
     );
     return components === componentLibrary.components
       ? componentLibrary
       : { ...componentLibrary, components };
-  }, [componentLibrary, initialDocument, identity, componentGraph]);
+  }, [componentLibrary, initialDocument, identity, componentGraph, allow]);
   /*
    * The pattern tier is read inside the panel — it is mounted only while the
    * panel is open — so the RULE comes down and the rows stay there.
    */
   const offerablePatterns = useCallback(
     (patterns: readonly SavedPattern[]) =>
-      withoutSelfPatterns(patterns, initialDocument, identity, componentGraph),
-    [initialDocument, identity, componentGraph]
+      offerablePatternsUnder(
+        withoutSelfPatterns(
+          patterns,
+          initialDocument,
+          identity,
+          componentGraph
+        ),
+        allow
+      ),
+    [initialDocument, identity, componentGraph, allow]
   );
+  /*
+   * The block tier under the same list. Memoised on it because the panel
+   * keys its catalogue on the identity it is handed, and `undefined` — no
+   * list — leaves the panel's own default, everything registered, in charge.
+   */
+  const offerableBlocks = useMemo(() => offerableDefinitions(allow), [allow]);
 
   const canvasRender = useMemo(
     () =>
@@ -3351,6 +3387,7 @@ function BlocksEditor<TFieldValues extends FieldValues = FieldValues>({
             insert: () => (
               <InsertPanelWithLibrary
                 editor={editor}
+                definitions={offerableBlocks}
                 categoryOrder={CORE_CATEGORIES}
                 beginInsertDrag={drag.beginInsertDrag}
                 components={offered}

@@ -23,11 +23,11 @@ import {
   DOCUMENT_VERDICT_CODES,
   registryNestingSource,
   validateDocument,
-  walkNodes,
 } from "@nextlyhq/blocks-engine";
 
 import { siteBreakpoints } from "../site-style";
 
+import { disallowedTypesIn } from "./blocks-allow";
 import type { DocumentKind } from "./blocks-options";
 
 /**
@@ -346,12 +346,9 @@ function disallowedBlockIssues(
   if (!allow) return [];
   if (!Array.isArray(doc.nodes)) return [];
 
-  const disallowed = new Set<string>();
-  walkNodes(doc.nodes, node => {
-    if (typeof node.type === "string" && !isAllowed(node.type, allow)) {
-      disallowed.add(node.type);
-    }
-  });
+  // The same predicate the insert panel filters its offer with, so a block
+  // the palette shows is never one this refuses.
+  const disallowed = disallowedTypesIn(doc.nodes, allow);
   if (disallowed.size === 0) return [];
 
   const accepted = allow.length > 0 ? allow.join(", ") : "none";
@@ -362,19 +359,4 @@ function disallowedBlockIssues(
       message: `${label} does not accept ${[...disallowed].sort().join(", ")}. Accepted: ${accepted}.`,
     },
   ];
-}
-
-/**
- * Exact name match, or a namespace match for a `namespace/*` pattern.
- *
- * The wildcard binds to the namespace separator rather than to raw characters:
- * `core/*` matches `core/heading` and never `coreevil/banner`. A bare prefix
- * test would quietly admit any namespace that merely starts with the same
- * letters, which is a wider policy than the declaration reads as.
- */
-function isAllowed(type: string, allow: readonly string[]): boolean {
-  return allow.some(pattern => {
-    if (!pattern.endsWith("/*")) return type === pattern;
-    return type.startsWith(pattern.slice(0, -1));
-  });
 }

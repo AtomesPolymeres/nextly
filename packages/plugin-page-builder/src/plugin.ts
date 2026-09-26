@@ -94,6 +94,7 @@ function pagesOptions(
       ? {}
       : { previewPath: opts.pagePreviewPath }),
     ...(pagePreviewBreakpoints(opts, configStyle) ?? {}),
+    ...(opts.pageAllow === undefined ? {} : { allow: opts.pageAllow }),
   };
 }
 
@@ -414,6 +415,18 @@ export interface PageBuilderOptions {
    * Ignored without a `pagePreviewPath`: there is no preview to offer them on.
    */
   pagePreviewBreakpoints?: PreviewViewportsDeclaration | false;
+
+  /**
+   * The block types a page accepts, forwarded to the `pages` collection's
+   * `content` field as its `blocks.allow`. A trailing `*` matches a namespace
+   * (`"core/*"`); component instances are admitted by naming
+   * `nextly/component-instance`.
+   *
+   * Omitted means every registered block, as before. Declared, it is enforced
+   * at save AND narrows the insert panel, so an author is offered only what
+   * the page will accept.
+   */
+  pageAllow?: readonly string[];
 }
 
 /**

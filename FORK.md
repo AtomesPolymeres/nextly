@@ -115,6 +115,84 @@ par le document. Cinq tests unitaires, chacun vu échouer pour sa propre raison.
 
 ---
 
+## `@nextlyhq/plugin-page-builder` — le panneau Insert respecte l'`allow` du champ
+
+**Le symptôme.** Le panneau `Insert` proposait tous les blocs enregistrés,
+tous les motifs et tous les composants, quel que soit l'`allow` du champ. Un
+bloc hors liste s'insérait, le client travaillait dessus, et l'enregistrement
+refusait le document entier avec `DISALLOWED_BLOCK_TYPE`. Du travail perdu à
+cause d'une règle que personne ne lui avait montrée.
+
+**Le correctif.** `InsertPanel` acceptait déjà `definitions`, `patterns` et
+`components` : `BlocksField` lui passe désormais des listes filtrées, et le
+builder n'est pas touché. Chaque niveau est jugé sur ce qu'une insertion
+ÉCRIT dans le document, puisque c'est ce que l'enregistrement juge :
+
+- un bloc, sur son type ET sur les enfants qu'il sème : `core/columns` sème
+  deux `core/column`, donc sous `["core/columns"]` seul, il n'est pas offert ;
+- un motif, sur tous les nœuds de son arbre ;
+- un composant, sur le seul nœud d'instance qu'il pose. Ils sont donc tous
+  offerts si `nextly/component-instance` est admis, aucun sinon.
+
+**Une seule implémentation.** Le prédicat (`isAllowed`, qui lit
+`namespace/*`) est sorti du validateur vers `fields/blocks-allow.ts`, que le
+validateur et le panneau importent tous deux. Deux copies divergeraient, et
+cette divergence recréerait exactement le défaut corrigé ici.
+
+**Fichiers.**
+
+- `packages/plugin-page-builder/src/fields/blocks-allow.ts` — le prédicat
+  partagé (nouveau)
+- `packages/plugin-page-builder/src/fields/blocks-validator.ts` — utilise ce
+  prédicat au lieu du sien
+- `packages/plugin-page-builder/src/admin/insert-allow.ts` — le filtrage des
+  trois niveaux (nouveau)
+- `packages/plugin-page-builder/src/admin/BlocksField.tsx` — lit `allow` dans
+  la déclaration et passe les listes filtrées au panneau
+
+**Vérifié.** Tests unitaires dans `insert-allow.test.ts`, câblage dans
+`BlocksField.paletteDrag.test.tsx` : chacun a été vu échouer en cassant le
+code. Vérifié aussi sur le playground avec
+`pageAllow: ["core/heading", "core/text", "core/columns"]` : le panneau offre
+Heading et Text, pas Columns, et aucun composant.
+
+**Upstream.** nextlyhq/nextly#1936.
+
+**À supprimer quand** l'amont filtre la palette selon l'`allow` du champ.
+
+---
+
+## `@nextlyhq/plugin-page-builder` — `pages` accepte un `allow`
+
+**Pourquoi.** `pagesCollection()` ne recevait que `previewPath` et
+`breakpoints`. Le champ `content` de la collection fournie par le plugin
+était donc le seul champ blocs qu'un hôte ne pouvait pas restreindre. La
+liste décidée pour l'accueil ne valait que pour l'accueil.
+
+**Le correctif.** `PagesCollectionOptions.allow`, transmis au `blocks.allow`
+du champ `content`, et `PageBuilderOptions.pageAllow`, transmis par
+`pagesOptions()` comme l'est déjà `pagePreviewPath`. Absent, rien ne change :
+tout bloc enregistré est admis.
+
+**Fichiers.**
+
+- `packages/plugin-page-builder/src/collections/pages.ts`
+- `packages/plugin-page-builder/src/plugin.ts`
+
+**Vérifié.** `collections/pages.test.ts` passe par le vrai `validate` du type
+de champ : un bloc hors liste est refusé, tout est accepté sans liste, et
+`pageBuilder({ pageAllow })` atteint le champ.
+
+**Côté template.** `pageBuilder({ pageAllow: [...INSERTABLE_BLOCKS] })` dans
+`nextly.config.ts`, dès que le paquet est publié.
+
+**Upstream.** nextlyhq/nextly#1937.
+
+**À supprimer quand** l'amont offre un `allow` sur `pages`. Si son option
+porte un autre nom, renommer l'appel côté template dans le même changement.
+
+---
+
 ## Publication
 
 ### TOUJOURS `pnpm publish`, jamais `npm publish`
