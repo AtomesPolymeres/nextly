@@ -390,4 +390,39 @@ describe("a refusal is not asked again", () => {
 
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
   });
+
+  /**
+   * agency #48. An answer carrying no readable time is not dated: an invalid
+   * `Date` held here reached the indicator as "stored NaN days ago".
+   */
+  it("keeps no date when the answer carries none it can read", async () => {
+    const save = vi.fn(() =>
+      Promise.resolve({ updatedAt: undefined as unknown as string })
+    );
+    const { result } = renderHook(() =>
+      useSnapshotAutosave({ identity: "doc-1", save, debounceMs: DEBOUNCE })
+    );
+
+    act(() => result.current.schedule());
+    act(() => void vi.advanceTimersByTime(DEBOUNCE));
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+    expect(result.current.lastSavedAt).toBeNull();
+  });
+
+  it("forgets a recovery point once told it is gone", async () => {
+    const save = vi.fn(() => saved());
+    const { result } = renderHook(() =>
+      useSnapshotAutosave({ identity: "doc-1", save, debounceMs: DEBOUNCE })
+    );
+
+    act(() => result.current.schedule());
+    act(() => void vi.advanceTimersByTime(DEBOUNCE));
+    await waitFor(() =>
+      expect(result.current.lastSavedAt?.toISOString()).toBe(STORED_AT)
+    );
+
+    act(() => result.current.forget());
+    expect(result.current.lastSavedAt).toBeNull();
+    expect(result.current.status).toBe("idle");
+  });
 });
