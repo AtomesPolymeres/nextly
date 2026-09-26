@@ -173,6 +173,16 @@ export interface UseSnapshotAutosaveResult {
    * records once at the end of it.
    */
   schedule: () => void;
+  /**
+   * Stop describing a recovery point that no longer exists.
+   *
+   * A real save deletes the author's recovery point on the server, and nothing
+   * here could know: the indicator went on saying "Recovery point stored 5
+   * minutes ago" about a row that was gone. Called by the owner when its
+   * document goes clean. A pending recording is left alone — it describes
+   * changes made after that point, and is still worth writing.
+   */
+  forget: () => void;
 }
 
 /**
@@ -245,7 +255,12 @@ export function useSnapshotAutosave({
     try {
       const result = await saveRef.current();
       if (mountedRef.current) {
-        setLastSavedAt(new Date(result.updatedAt));
+        // Only a date that parses is kept. The server's clock is the one
+        // worth reporting, but an answer that carries no readable time is not
+        // a reason to invent one — and an invalid `Date` held here reached the
+        // indicator as "stored NaN days ago" (agency #48).
+        const storedAt = new Date(result?.updatedAt ?? Number.NaN);
+        setLastSavedAt(Number.isFinite(storedAt.getTime()) ? storedAt : null);
         setStatus("saved");
       }
     } catch (error) {
@@ -306,5 +321,10 @@ export function useSnapshotAutosave({
     };
   }, [identity]);
 
-  return { status, lastSavedAt, schedule };
+  const forget = useCallback(() => {
+    setLastSavedAt(null);
+    setStatus(current => (current === "saving" ? current : "idle"));
+  }, []);
+
+  return { status, lastSavedAt, schedule, forget };
 }

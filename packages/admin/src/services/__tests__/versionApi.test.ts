@@ -136,8 +136,34 @@ describe("versionApi.discardWorkingDraft", () => {
 describe("versionApi autosave", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    putSpy.mockResolvedValue({ updatedAt: "2026-08-17T07:00:00.000Z" });
+    // The server's canonical mutation envelope, as the dispatcher sends it.
+    putSpy.mockResolvedValue({
+      message: "Draft recovery point saved.",
+      item: { updatedAt: "2026-08-17T07:00:00.000Z", locale: null },
+    });
     getSpy.mockResolvedValue(null);
+  });
+
+  /**
+   * The recording is the envelope's ITEM. Read off the envelope, `updatedAt`
+   * was `undefined`, and the indicator rendered "stored NaN days ago" for a
+   * recording that had in fact been stored (agency #48).
+   */
+  it("reports the recording the envelope carries, not the envelope", async () => {
+    const result = await versionApi.saveAutosave(collection, { title: "x" });
+
+    expect(result).toEqual({
+      updatedAt: "2026-08-17T07:00:00.000Z",
+      locale: null,
+    });
+  });
+
+  it("refuses an answer that carries no recording", async () => {
+    putSpy.mockResolvedValue({ message: "Draft recovery point saved." });
+
+    await expect(
+      versionApi.saveAutosave(collection, { title: "x" })
+    ).rejects.toThrow(/no recording/);
   });
 
   it("writes a collection entry's recovery point with PUT", async () => {

@@ -399,10 +399,23 @@ function componentDocument(): BlockDocument {
 }
 
 /** Mount the field and open the editor, which is where the two surfaces live. */
-function openEditor(): void {
-  render(<Host />);
+function openEditor(document?: BlockDocument): void {
+  render(<Host document={document} />);
   fireEvent.click(screen.getByRole("button", { name: OPEN_BUILDER_ACTION }));
 }
+
+/**
+ * A page that already holds something.
+ *
+ * An EMPTY page reads the pattern library on mount, on purpose: it opens on the
+ * patterns it may start from (agency #52). The laziness below is about every
+ * other editor mount, so it is asserted on a page that is not new.
+ */
+const EXISTING_PAGE: BlockDocument = {
+  formatVersion: 1,
+  kind: "page",
+  nodes: [{ id: "p1", type: "core/text", version: 1, props: { text: "x" } }],
+} as BlockDocument;
 
 beforeEach(() => {
   seen.insertPanel = undefined;
@@ -580,7 +593,7 @@ describe("what the editor reads before anyone asks for it", () => {
     // panel's mount is when it is asked for.
     shownPanel = "layers";
 
-    openEditor();
+    openEditor(EXISTING_PAGE);
 
     expect(routeReads).toBe(0);
   });
@@ -592,10 +605,20 @@ describe("what the editor reads before anyone asks for it", () => {
     // alone, so it does not drag the pattern tier along on every editor open.
     shownPanel = "layers";
 
-    openEditor();
+    openEditor(EXISTING_PAGE);
 
     expect(componentReads).toBeGreaterThan(0);
     expect(routeReads).toBe(0);
+  });
+
+  it("reads it on a NEW page, to offer the patterns it may start from", () => {
+    // The one mount that asks for the library before any panel: a page with
+    // nothing on it opens on its page patterns rather than a blank canvas.
+    shownPanel = "layers";
+
+    openEditor();
+
+    expect(routeReads).toBeGreaterThan(0);
   });
 
   it("reads it once the insert panel is the one on screen", () => {

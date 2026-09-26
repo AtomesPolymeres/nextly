@@ -256,7 +256,7 @@ export const versionApi = {
    * document itself does not yet have. The server strips write-only values
    * before storing and redacts on read; neither is the client's job.
    */
-  saveAutosave: (
+  saveAutosave: async (
     scope: VersionScope,
     snapshot: unknown,
     locale?: string | null
@@ -271,10 +271,20 @@ export const versionApi = {
     if (locale) search.set("locale", locale);
     const query = search.toString();
 
-    return protectedApi.put<AutosaveWriteResponse>(
+    // The server answers with the mutation envelope, `{ message, item }`, and
+    // the recording is the ITEM. Reading `updatedAt` off the envelope got
+    // `undefined`, which `new Date()` turned into an invalid date the
+    // indicator then subtracted from — "stored NaN days ago" (agency #48).
+    // The types agreed with the mistake, because a generic on the fetcher
+    // asserts a shape rather than checking one.
+    const response = await protectedApi.put<{ item?: AutosaveWriteResponse }>(
       `${basePath(scope)}/autosave${query ? `?${query}` : ""}`,
       snapshot
     );
+    if (response?.item === undefined) {
+      throw new Error("autosave: the server reported no recording");
+    }
+    return response.item;
   },
 
   /**

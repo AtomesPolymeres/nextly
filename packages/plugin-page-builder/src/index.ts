@@ -28,6 +28,7 @@
  */
 export { pageBuilder } from "./plugin";
 export type { PageBuilderOptions } from "./plugin";
+export type { OfferablePattern } from "./library-contract";
 
 // The blocks field type and the document it stores. `BlockDocument` is
 // re-exported here because generated types name it: an app depends on this

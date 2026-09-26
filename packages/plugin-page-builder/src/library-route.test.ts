@@ -1255,3 +1255,69 @@ describe("the component tier", () => {
     expect(library.meta).toEqual({ count: 0, truncated: false });
   });
 });
+
+/**
+ * The host decides which stored patterns THIS site offers (agency #52). A site
+ * seeded with two templates' pages offers only its own template's, plus those
+ * belonging to none — and the collection keeps every row.
+ */
+describe("readPatternLibrary with an offer", () => {
+  const rows = [
+    row("1", { slug: "vitrine-contact", granularity: "page" }),
+    row("2", { slug: "corporate-contact", granularity: "page" }),
+    row("3", { slug: "landing-simple", granularity: "page" }),
+    row("4", { granularity: "section" }),
+  ];
+  const onlyVitrine = (p: { slug: string | undefined }) =>
+    p.slug === undefined || !p.slug.startsWith("corporate-");
+
+  it("offers only the rows the host says this site offers", async () => {
+    const { ctx } = contextOver([rows]);
+
+    const answer = await readPatternLibrary(ctx, onlyVitrine);
+
+    expect(answer.items.map(item => item.id)).toEqual(["1", "3", "4"]);
+  });
+
+  it("hands the host the row's SLUG, the name its own seed wrote", async () => {
+    const { ctx } = contextOver([rows]);
+    const offer = vi.fn(() => true);
+
+    await readPatternLibrary(ctx, offer);
+
+    expect(offer).toHaveBeenCalledWith({
+      slug: "vitrine-contact",
+      title: "Pattern 1",
+      granularity: "page",
+      category: undefined,
+    });
+  });
+
+  it("does not report a declined row as a cut library", async () => {
+    // A row this site does not offer is not part of its library. Reporting it
+    // as cut would tell an author a pattern is missing that was never theirs.
+    const { ctx } = contextOver([rows]);
+
+    const answer = await readPatternLibrary(ctx, onlyVitrine);
+
+    expect(answer.meta.truncated).toBe(false);
+  });
+
+  it("offers the row when the host's rule throws", async () => {
+    const { ctx } = contextOver([rows]);
+
+    const answer = await readPatternLibrary(ctx, () => {
+      throw new Error("host bug");
+    });
+
+    expect(answer.items).toHaveLength(4);
+  });
+
+  it("offers every row when the host states no rule", async () => {
+    const { ctx } = contextOver([rows]);
+
+    const answer = await readPatternLibrary(ctx);
+
+    expect(answer.items).toHaveLength(4);
+  });
+});

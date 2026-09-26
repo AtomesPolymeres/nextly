@@ -53,7 +53,10 @@ import { registerComponentReadinessNotice } from "./component-readiness-hook";
 import { blocksFieldType } from "./fields/blocksField";
 import { hostFetchPolicy } from "./host-policy";
 import { registerLayoutComponentGuard } from "./layout-component-guard";
-import { PAGE_BUILDER_PLUGIN_NAME } from "./library-contract";
+import {
+  PAGE_BUILDER_PLUGIN_NAME,
+  type OfferablePattern,
+} from "./library-contract";
 import {
   componentLibraryRoute,
   DEFAULT_COMPONENT_STORE,
@@ -427,6 +430,26 @@ export interface PageBuilderOptions {
    * the page will accept.
    */
   pageAllow?: readonly string[];
+
+  /**
+   * Whether THIS site offers a stored pattern, asked of each row the library
+   * read returns — both the patterns the insert panel offers and the page
+   * patterns a new page can start from.
+   *
+   * A display rule, not a deletion: a declined row stays in the collection,
+   * and the answer may change with the site's configuration. The typical use
+   * is a host that seeds patterns for several site templates into every site,
+   * and offers each site only its own template's — plus those belonging to
+   * none, which includes every pattern an author saved themselves.
+   *
+   * Evaluated on the SERVER, in the library route, so it may read the host's
+   * environment. It receives the row's `slug`, which is the name a host's own
+   * seed gave it; the row id differs on every site. A predicate that throws is
+   * treated as offering the row.
+   *
+   * Omitted, every readable row is offered, as before.
+   */
+  offerPattern?: (pattern: OfferablePattern) => boolean;
 }
 
 /**
@@ -1029,7 +1052,7 @@ export const pageBuilder = (opts: PageBuilderOptions = {}) => {
       // plugin route declares one permission, so the tier a role may read
       // without the other has to be reachable without the other's gate.
       routes: [
-        patternLibraryRoute(),
+        patternLibraryRoute(opts.offerPattern),
         componentLibraryRoute(componentStoreOf(opts)),
         savePatternRoute(),
         patternCapabilityRoute(),

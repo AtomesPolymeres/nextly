@@ -116,6 +116,32 @@ describe("useDocumentAutosave", () => {
   });
 
   /**
+   * agency #48. A real save deletes the recovery point on the server and
+   * resets the form clean. Still holding the point's date, the indicator went
+   * on describing a recording that no longer existed.
+   */
+  it("stops describing a recovery point once the document is saved", async () => {
+    const { result } = renderHook(() => useHarness());
+
+    act(() => {
+      result.current.form.setValue("title", "hello", { shouldDirty: true });
+    });
+    act(() => {
+      vi.advanceTimersByTime(DEBOUNCE);
+    });
+    await waitFor(() =>
+      expect(result.current.autosave.lastSavedAt).not.toBeNull()
+    );
+
+    // What a real save does to the form: the saved values become the defaults.
+    act(() => {
+      result.current.form.reset({ title: "hello" });
+    });
+
+    await waitFor(() => expect(result.current.autosave.lastSavedAt).toBeNull());
+  });
+
+  /**
    * Loading a document calls `reset`, which installs the loaded values as the
    * new defaults and leaves the form CLEAN. Recording on it would write the
    * document's own stored values back as a recovery point the instant the page

@@ -169,6 +169,33 @@ export function isInsertableGranularity(value: unknown): boolean {
 }
 
 /**
+ * Whether a stored row's granularity says it STARTS a page.
+ *
+ * The other half of {@link isInsertableGranularity}, and closed the same way:
+ * only the one value that means "a whole page" answers yes. A row whose
+ * granularity was removed is neither inserted nor offered as a start, which is
+ * the safe reading of a row nobody can classify.
+ */
+export function isPageStartGranularity(value: unknown): boolean {
+  return value === "page";
+}
+
+/**
+ * What a host is shown of a stored pattern when asked whether THIS site offers
+ * it (`PageBuilderOptions.offerPattern`).
+ *
+ * The slug is the reason it exists. A library row's identity on the wire is its
+ * id, which differs on every site; the slug is what a host's own code wrote
+ * when it seeded the row, so it is the one name a host can decide on.
+ */
+export interface OfferablePattern {
+  readonly slug: string | undefined;
+  readonly title: string;
+  readonly granularity: string | undefined;
+  readonly category: string | undefined;
+}
+
+/**
  * One pattern, as the panel needs it.
  *
  * DERIVED from `SavedPattern` — the shape the panel actually reads — rather

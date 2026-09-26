@@ -245,3 +245,21 @@ describe("the categories the save form suggests", () => {
     expect(result.current.categories).toBe(first);
   });
 });
+
+/**
+ * The other half of the same read: what a NEW page may start from (agency
+ * #52). Exactly the rows the insert list leaves out, and none it keeps.
+ */
+describe("what a new page may start from", () => {
+  it("offers the whole-page patterns, and only those", () => {
+    answering([
+      { id: "page", title: "Landing", granularity: "page", document },
+      { id: "sec", title: "Hero", granularity: "section", document },
+      { id: "odd", title: "Unclassified", document },
+    ]);
+
+    const { result } = renderHook(() => usePatternLibrary());
+
+    expect(result.current.pageStarts.map(p => p.id)).toEqual(["page"]);
+  });
+});

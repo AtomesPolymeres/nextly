@@ -80,7 +80,16 @@ import {
   type LibraryListResponse,
   type LibraryPattern,
   type LibraryResponse,
+  type OfferablePattern,
 } from "./library-contract";
+
+/**
+ * Whether this site offers a stored pattern — the host's answer, asked on the
+ * server where its configuration lives.
+ *
+ * See `PageBuilderOptions.offerPattern`.
+ */
+export type PatternOffer = (pattern: OfferablePattern) => boolean;
 
 /**
  * How many rows one read of the collection asks for.
@@ -428,7 +437,8 @@ function directComponentReads(
  * inside `contributes.routes` can only be tested by booting one.
  */
 export async function readPatternLibrary(
-  ctx: PatternLibraryContext
+  ctx: PatternLibraryContext,
+  offer?: PatternOffer
 ): Promise<LibraryResponse> {
   const slug = ctx.self.collections[PATTERNS_SLUG] ?? PATTERNS_SLUG;
   // AS THE USER. A route reading with the instance's own identity would answer
@@ -451,7 +461,7 @@ export async function readPatternLibrary(
         );
         return page(result.data, result.pagination?.hasMore === true);
       },
-      row => readLibraryRow(row) ?? "skip",
+      row => offeredRow(row, offer) ?? "skip",
       LIBRARY_PAGE_SIZE
     )
   );
@@ -955,6 +965,38 @@ function whyStop(at: {
 }
 
 /**
+ * One stored row, as the panel needs it — or nothing when it is not one, or
+ * when the host does not offer it on this site.
+ *
+ * A row the host declines is SKIPPED, exactly as an unreadable one is: it is
+ * not part of this site's library, so leaving it out is not a cut, and the
+ * response must not say it was. Nothing is removed from the collection — the
+ * row is still there for a host whose answer changes.
+ *
+ * A host whose predicate THROWS is answered with the row: a bug in the host's
+ * filter should cost it a pattern too many in a list, not the whole library.
+ */
+function offeredRow(
+  row: unknown,
+  offer: PatternOffer | undefined
+): LibraryPattern | undefined {
+  const pattern = readLibraryRow(row);
+  if (pattern === undefined || offer === undefined) return pattern;
+  const record = row as Record<string, unknown>;
+  try {
+    const offered = offer({
+      slug: typeof record.slug === "string" ? record.slug : undefined,
+      title: pattern.title,
+      granularity: pattern.granularity,
+      category: pattern.category,
+    });
+    return offered ? pattern : undefined;
+  } catch {
+    return pattern;
+  }
+}
+
+/**
  * One stored row, as the panel needs it — or nothing when it is not one.
  *
  * Every field is read defensively. These are stored documents reaching a
@@ -1034,7 +1076,7 @@ interface LibraryRoute {
  * that is the part a reader of `contributes.routes` needs to see without
  * following a call.
  */
-export function patternLibraryRoute(): LibraryRoute {
+export function patternLibraryRoute(offer?: PatternOffer): LibraryRoute {
   return {
     method: "GET",
     path: LIBRARY_ROUTE_PATH,
@@ -1043,7 +1085,7 @@ export function patternLibraryRoute(): LibraryRoute {
     // renamed the collection. See the module docblock.
     requiredPermission: ({ collection }) => collection(PATTERNS_SLUG, "read"),
     handler: async (_req: Request, ctx: PluginRouteContext) =>
-      Response.json(await readPatternLibrary(ctx)),
+      Response.json(await readPatternLibrary(ctx, offer)),
   };
 }
 

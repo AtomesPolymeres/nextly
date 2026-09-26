@@ -43,6 +43,11 @@ export interface AutoSaveIndicatorProps {
 function formatTimeAgo(date: Date): string {
   const now = Date.now();
   const diffMs = now - date.getTime();
+  // A date that is not one produces a sentence, never arithmetic: subtracting
+  // an invalid date is `NaN`, and `NaN` fails every comparison below and fell
+  // through to "NaN days ago" (agency #48). The caller already declines to
+  // describe such a date; this is the floor under that.
+  if (!Number.isFinite(diffMs)) return "at an unknown time";
   const diffSec = Math.floor(diffMs / 1000);
 
   if (diffSec < 60) {
@@ -61,6 +66,17 @@ function formatTimeAgo(date: Date): string {
 
   const diffDays = Math.floor(diffHours / 24);
   return diffDays === 1 ? "1 day ago" : `${diffDays} days ago`;
+}
+
+/**
+ * Whether there is a recovery point whose age can be told.
+ *
+ * An invalid `Date` is an object, so it passed the truthiness test this
+ * replaces and the tooltip described the age of a recording nobody could date.
+ * No date, no mention of one.
+ */
+function isKnownDate(date: Date | null): date is Date {
+  return date !== null && Number.isFinite(date.getTime());
 }
 
 // ============================================================================
@@ -100,7 +116,7 @@ export function AutoSaveIndicator({
     icon = <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
     label = "Saving...";
     tooltipContent = "Storing a recovery point";
-  } else if (lastSavedAt) {
+  } else if (isKnownDate(lastSavedAt)) {
     const timeAgo = formatTimeAgo(lastSavedAt);
     if (isDirty) {
       icon = <Cloud className="h-4 w-4 text-muted-foreground" />;

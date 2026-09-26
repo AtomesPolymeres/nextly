@@ -142,7 +142,7 @@ export function useDocumentAutosave({
     ? `${scope.kind}:${scope.slug}:${"entryId" in scope ? scope.entryId : scope.documentId}:${locale ?? ""}`
     : null;
 
-  const { status, lastSavedAt, schedule } = useSnapshotAutosave({
+  const { status, lastSavedAt, schedule, forget } = useSnapshotAutosave({
     identity,
     save,
     debounceMs,
@@ -171,7 +171,12 @@ export function useDocumentAutosave({
          * nothing. And it is the same condition the unsaved-changes guard uses,
          * so the two cannot disagree about whether there is work at risk.
          */
-        if (!isDirty) return;
+        if (!isDirty) {
+          // Clean again: either a real save, which deletes the recovery point
+          // on the server, or a load. Neither leaves a point to describe.
+          forget();
+          return;
+        }
         schedule();
       },
     });
@@ -180,6 +185,6 @@ export function useDocumentAutosave({
     // `scope` participates through its identity fields: a different document
     // needs a different subscription, and comparing the object itself would
     // resubscribe on every render.
-  }, [form, schedule, enabled, scope?.kind, scope?.slug, scope]);
+  }, [form, schedule, forget, enabled, scope?.kind, scope?.slug, scope]);
   return { status, lastSavedAt };
 }
