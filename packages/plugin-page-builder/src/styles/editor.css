@@ -531,3 +531,99 @@
   white-space: nowrap;
   padding: 0 12px;
 }
+
+/* ------------------------------------------------- start from a pattern */
+/*
+ * The surface a NEW page opens on (`PageStartChooser`). It covers the editor
+ * rather than sitting in a panel: nothing else on screen is useful until the
+ * author has chosen how the page starts, and the blank page is one click away
+ * at the foot of it.
+ */
+.nx-pb-start {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: auto;
+  background: var(--nx-background);
+  color: var(--nx-foreground);
+}
+
+.nx-pb-start__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.nx-pb-start__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.nx-pb-start__lede,
+.nx-pb-start__note {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  color: var(--nx-muted-foreground);
+}
+
+.nx-pb-start__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-pb-start__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  border: 1px solid var(--nx-border);
+  border-radius: var(--radius);
+  background: var(--nx-card);
+  color: var(--nx-card-foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.nx-pb-start__tile:hover {
+  border-color: var(--nx-foreground);
+}
+.nx-pb-start__tile:focus-visible {
+  outline: 2px solid var(--nx-foreground);
+  outline-offset: 2px;
+}
+
+.nx-pb-start__preview {
+  display: block;
+  overflow: hidden;
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--nx-muted);
+  /* The miniature is a picture of the page, not part of the button's hit
+     target's behaviour: links inside it must not take the click. */
+  pointer-events: none;
+}
+
+.nx-pb-start__name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.nx-pb-start__description {
+  font-size: 0.8125rem;
+  color: var(--nx-muted-foreground);
+}
+
+.nx-pb-start__footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--nx-border);
+}

@@ -193,6 +193,114 @@ porte un autre nom, renommer l'appel côté template dans le même changement.
 
 ---
 
+## `@nextlyhq/plugin-page-builder` — une page neuve s'ouvre sur ses modèles
+
+**Le symptôme.** Créer une page ouvrait un canevas vide. Les patterns de
+granularité `page` étaient stockés, lus par la route de bibliothèque, puis
+écartés de la palette Insert — à dessein : on ne pose pas une page dans une
+page. Et rien d'autre ne les lisait. Le commentaire de l'amont nommait la
+surface manquante : _« the "start from a pattern" surface the design calls
+for »_.
+
+**Le correctif.**
+
+- `usePatternLibrary()` rend aussi `pageStarts` : exactement les lignes que
+  `patterns` laisse de côté, par un prédicat fermé (`isPageStartGranularity`).
+- `PageStartChooser` : la liste nommée, avec la miniature de chaque page, et
+  « Start from a blank page » en pied — toujours offert.
+- `BlocksEditor` le monte seulement si le document OUVERT est une page vide,
+  et le referme au premier choix. Choisir passe par `planInsertPattern` avec
+  la cible `"document"`, que le moteur prévoyait déjà pour ce cas : elle
+  remplace la forêt racine sans toucher aux réglages de la page. Le même plan
+  décide de l'offre et du clic : un modèle que le planificateur refuse n'est
+  pas proposé.
+- Les modèles passent par `offerablePatterns`, la règle de la palette : l'`allow`
+  du champ et le graphe des composants.
+- Aucune bibliothèque de page à offrir : le sélecteur ne s'affiche pas, le
+  canevas vide arrive comme avant.
+
+**Lecture seule.** Rien de nouveau n'est écrit hors du document de la page :
+la route lue est celle de la palette, sous `read-patterns`.
+
+**Un coût accepté.** Une page NEUVE lit la bibliothèque à l'ouverture ; les
+autres restent paresseuses. `BlocksField.paletteDrag.test.tsx` le dit
+désormais : les tests de paresse ouvrent une page qui a du contenu.
+
+**Fichiers.**
+
+- `packages/plugin-page-builder/src/admin/PageStartChooser.tsx` (nouveau)
+- `packages/plugin-page-builder/src/admin/BlocksField.tsx`
+- `packages/plugin-page-builder/src/admin/pattern-library-client.ts`
+- `packages/plugin-page-builder/src/library-contract.ts`
+- `packages/plugin-page-builder/src/styles/editor.css` — `.nx-pb-start*`
+
+**Vérifié.** `BlocksField.pageStart.test.tsx` (le câblage) et
+`pattern-library-client.test.tsx` (`pageStarts`), chacun vu échouer en
+cassant ce qu'il surveille. Vérifié aussi en session client sur le template
+agence (issue agency-default-web#52).
+
+**Upstream.** Issue à ouvrir.
+
+**À supprimer quand** l'amont livre sa surface « start from a pattern ».
+
+---
+
+## `@nextlyhq/plugin-page-builder` — `offerPattern` : le site choisit ce qu'il offre
+
+**Pourquoi.** Le template agence seede les pages de TOUS ses templates de site
+dans chaque site, et un site vitrine ne doit proposer que les siennes. Les
+retirer de la base serait faux : elles sont upsert à chaque boot, et un site
+peut changer de template au provisioning. C'est une règle d'affichage.
+
+**Le correctif.** `PageBuilderOptions.offerPattern(pattern) => boolean`,
+évalué dans la route de bibliothèque, CÔTÉ SERVEUR — où vit l'environnement
+qui dit quel est le template du site. Il reçoit le `slug` de la ligne, le nom
+que le seed de l'hôte lui a donné ; l'id diffère d'un site à l'autre. Une
+ligne refusée est sautée comme une ligne illisible, donc la réponse ne se dit
+pas coupée. Un prédicat qui lève offre la ligne : un bug de l'hôte coûte un
+modèle de trop, pas la bibliothèque.
+
+**Fichiers.** `packages/plugin-page-builder/src/library-route.ts`,
+`plugin.ts`, `library-contract.ts` (`OfferablePattern`), `index.ts`.
+
+**Vérifié.** Cinq cas dans `library-route.test.ts`, dont trois vus échouer
+en ignorant l'option ou en retirant la ligne sur exception.
+
+**Upstream.** Issue à ouvrir.
+
+**À supprimer quand** l'amont offre un filtre de bibliothèque côté serveur.
+
+---
+
+## `@nextlyhq/admin` — « Recovery point stored NaN days ago »
+
+**Le symptôme** (agency-default-web#48). L'infobulle de l'indicateur
+d'enregistrement affichait un âge en `NaN`.
+
+**La cause.** Le serveur répond à `PUT …/versions/autosave` avec l'enveloppe
+de mutation `{ message, item }`. `versionApi.saveAutosave` rendait
+l'enveloppe, et `useSnapshotAutosave` lisait `result.updatedAt` : `undefined`,
+donc `new Date(undefined)` — un objet invalide, mais vrai, que l'indicateur
+soustrayait. Les tests passaient parce que leurs mocks renvoyaient l'item nu.
+
+**Le correctif.**
+
+- `saveAutosave` rend l'`item`, et refuse une réponse qui n'en porte pas
+- `useSnapshotAutosave` ne garde qu'une date lisible, et offre `forget()`
+- `useDocumentAutosave` appelle `forget()` quand le formulaire redevient
+  propre : un enregistrement réel supprime le point de reprise côté serveur,
+  et l'indicateur continuait d'en donner l'âge
+- `AutoSaveIndicator` ne décrit qu'une date connue ; `formatTimeAgo` ne rend
+  jamais `NaN`
+
+**Vérifié.** Un test par garde, chacun vu échouer en retirant la garde.
+
+**Upstream.** Issue à ouvrir — le défaut n'est pas propre au fork.
+
+**À supprimer quand** l'amont lit l'enveloppe.
+
+---
+
 ## Publication
 
 ### TOUJOURS `pnpm publish`, jamais `npm publish`

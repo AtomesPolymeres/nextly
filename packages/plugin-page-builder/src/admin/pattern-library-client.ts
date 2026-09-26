@@ -29,6 +29,7 @@ import {
   type LibraryPattern,
   type LibraryResponse,
   isInsertableGranularity,
+  isPageStartGranularity,
 } from "../library-contract";
 
 /**
@@ -51,6 +52,14 @@ export interface PatternLibraryRead {
    * library resolves.
    */
   readonly patterns: readonly SavedPattern[];
+  /**
+   * The full-page patterns: what a NEW page may start from, and never what is
+   * inserted into one. The rows {@link patterns} leaves out, which is exactly
+   * what the "start from a pattern" surface wants.
+   *
+   * The same stable empty list while the read is in flight.
+   */
+  readonly pageStarts: readonly SavedPattern[];
   /**
    * The categories this library already uses, in the order they read best.
    *
@@ -152,9 +161,16 @@ export function usePatternLibrary(): PatternLibraryRead {
     // library: `filter` allocates whether or not it dropped anything.
     return insertable.length === all.length ? all : insertable;
   }, [read.data]);
+  const pageStarts = useMemo(() => {
+    const all = read.data?.items;
+    if (all === undefined) return NO_PATTERNS;
+    const starts = all.filter(item => isPageStartGranularity(item.granularity));
+    return starts.length === 0 ? NO_PATTERNS : starts;
+  }, [read.data]);
   const categories = useMemo(() => categoriesOf(read.data?.items), [read.data]);
   return {
     patterns,
+    pageStarts,
     categories,
     truncated: read.data?.meta.truncated === true,
     state: libraryReadState(read),

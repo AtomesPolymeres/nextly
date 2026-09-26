@@ -53,6 +53,7 @@ import {
   componentReferencesIn,
   isComponentDocument,
   newId,
+  planInsertPattern,
   type BlockDocument,
   type ComponentLookup,
   type DocumentKind,
@@ -177,6 +178,7 @@ import {
 } from "./insert-allow";
 import { pageRenderInputs, readDocumentLimits } from "./page-render-inputs";
 import { PageBuilderCard } from "./PageBuilderCard";
+import { PageStartChooser, type PageStart } from "./PageStartChooser";
 import { useMayCreatePattern } from "./pattern-capability-client";
 import {
   usePatternLibrary,
@@ -2201,6 +2203,41 @@ function InsertPanelWithLibrary({
 }
 
 /**
+ * The start surface over the library read, mounted only while it is shown.
+ *
+ * The read lives here rather than in the editor for the reason the insert
+ * panel's does: a library nobody is looking at is not fetched. And the page
+ * patterns pass through the SAME `offerablePatterns` rule the insert panel's
+ * do — the field's `allow` and the component graph — so a page is never offered
+ * a start its own save would refuse.
+ */
+function PageStartWithLibrary({
+  offerablePatterns,
+  ...props
+}: Omit<
+  React.ComponentProps<typeof PageStartChooser>,
+  "patterns" | "state" | "retry"
+> & {
+  offerablePatterns: (
+    patterns: readonly SavedPattern[]
+  ) => readonly SavedPattern[];
+}): React.JSX.Element | null {
+  const library = usePatternLibrary();
+  const patterns = useMemo(
+    () => offerablePatterns(library.pageStarts),
+    [offerablePatterns, library.pageStarts]
+  );
+  return (
+    <PageStartChooser
+      {...props}
+      patterns={patterns}
+      state={library.state}
+      retry={library.retry}
+    />
+  );
+}
+
+/**
  * One tier's state as the panel says it, from the two facts a read carries.
  *
  * `unavailable` first, for the reason both reads name it first; then cut; and
@@ -2779,6 +2816,60 @@ function BlocksEditor<TFieldValues extends FieldValues = FieldValues>({
    * list — leaves the panel's own default, everything registered, in charge.
    */
   const offerableBlocks = useMemo(() => offerableDefinitions(allow), [allow]);
+
+  /*
+   * Whether the page opens on the "start from a pattern" surface.
+   *
+   * Decided ONCE, from the document the editor OPENED with: a page, with
+   * nothing on it. Starting from a pattern replaces the root forest, so it is
+   * offered only where that loses nothing — and it is closed for good by the
+   * first choice, either one. A page emptied later is a page an author
+   * emptied, not a new one, and is not asked again.
+   */
+  const [startOpen, setStartOpen] = useState(
+    () => initialDocument.kind === "page" && initialDocument.nodes.length === 0
+  );
+  const closeStart = useCallback(() => setStartOpen(false), []);
+  /*
+   * The plan for starting this page from a pattern, or nothing when the
+   * planner refuses. One function for the OFFER and the CHOICE, so a tile is
+   * shown only for a start the click will be able to apply.
+   *
+   * `"document"`: the planner's own target for a whole-page pattern. It
+   * replaces the root forest and keeps the page's settings, which is what
+   * starting a page means — and the pattern's nodes arrive re-identified and
+   * marked with where they were copied from, as any pattern insert's do.
+   */
+  const planStart = useCallback(
+    (start: PageStart) => {
+      const plan = planInsertPattern(
+        editor.document,
+        { id: start.id, document: start.document },
+        "document",
+        nesting,
+        componentLibrary.definitions
+      );
+      return plan.pageOps;
+    },
+    [editor.document, nesting, componentLibrary.definitions]
+  );
+  const acceptsStart = useCallback(
+    (start: PageStart) => planStart(start) !== undefined,
+    [planStart]
+  );
+  const startFrom = useCallback(
+    (start: PageStart) => {
+      const ops = planStart(start);
+      // Refused between the offer and the click — the document or the library
+      // moved. Said, and the surface stays open so another can be chosen.
+      if (ops === undefined || editor.applyAll(ops) === null) {
+        notices.raise(`“${start.title}” could not be placed on this page.`);
+        return;
+      }
+      setStartOpen(false);
+    },
+    [planStart, editor, notices]
+  );
 
   const canvasRender = useMemo(
     () =>
@@ -3684,6 +3775,18 @@ function BlocksEditor<TFieldValues extends FieldValues = FieldValues>({
           />
         </BlockKeyboardActions>
       </BuilderShell>
+      {startOpen && editor.document.nodes.length === 0 ? (
+        <PageStartWithLibrary
+          offerablePatterns={offerablePatterns}
+          accepts={acceptsStart}
+          onChoose={startFrom}
+          onBlank={closeStart}
+          preview={{
+            siteStyles: siteSheet(canvasSiteStyle),
+            render: canvasRender,
+          }}
+        />
+      ) : null}
     </div>
   );
 }
