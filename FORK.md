@@ -242,13 +242,30 @@ est donc renommé juste le temps de publier, puis restauré.
 
 ### La séquence complète
 
+**L'ORDRE est contraint aux deux bouts, et se tromper coûte une passe entière.**
+
 ```bash
-pnpm turbo build --filter=@nextlyhq/builder...   # le dist DOIT exister
-# renommer en @atomespolymeres/builder ET mettre publishConfig.provenance à false
+# 1. LA VERSION D'ABORD, sur les six paquets, NOMS INCHANGÉS
+#    Les plugins figent leur plancher de cœur à la COMPILATION : un build
+#    lancé avant le bump y grave l'ancien numéro.
+# 2. BUILD, encore sous les noms @nextlyhq/*
+pnpm turbo build --filter=@nextlyhq/plugin-page-builder... --filter=...
+# 3. RENOMMER en @atomespolymeres/* ET mettre publishConfig.provenance à false
+# 4. PUBLIER
 NODE_AUTH_TOKEN=$(gh auth token) pnpm publish --tag alpha --no-git-checks \
   --registry=https://npm.pkg.github.com
-# restaurer package.json
+# 5. RESTAURER les package.json
 ```
+
+**Renommer avant de compiler casse le build**, et le message n'aide pas :
+`No package found with name '@nextlyhq/plugin-page-builder' in workspace`. Les
+filtres turbo portent sur les noms du workspace, qui viennent de disparaître.
+Payé une fois.
+
+**`node_modules` peut manquer**, et `lint` comme `check-types` échouent alors
+avec des messages qui ressemblent à des erreurs de code. `pnpm install` avant
+toute conclusion — l'`AGENTS.md` du dépôt le dit déjà : une installation
+manquante SURESTIME la casse.
 
 **`NODE_AUTH_TOKEN` sert aussi à INSTALLER.** Le `~/.npmrc` écrit
 `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`, donc un `npm install`
