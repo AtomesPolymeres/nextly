@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { blocksFieldType } from "../fields/blocksField";
 import { pageBuilder } from "../plugin";
 
 import { pagesCollection } from "./pages";
@@ -168,5 +169,68 @@ describe("where a page previews", () => {
     const url = pagesCollection({ previewPath: "/{slug}" }).admin?.preview?.url;
 
     expect(url?.({ slug: "a/b" })).toBe("/a%2Fb");
+  });
+});
+
+/**
+ * The block list a page accepts, declared by the host.
+ *
+ * Every other blocks field could be narrowed with `blocks.allow`; this one,
+ * built by the plugin, could not — so a site restricting its homepage to a
+ * curated list still let every page take any registered block. Asserted
+ * through the field type's own `validate`, because a declaration that reads
+ * right and is never consulted is the defect this replaces.
+ */
+describe("pages takes the host's block list", () => {
+  const page = (type: string) => ({
+    formatVersion: 1,
+    kind: "page",
+    nodes: [{ id: "n1", type, version: 1, props: {} }],
+  });
+
+  /** The verdict the field type gives a page holding one node of `type`. */
+  function verdictOn(
+    collection: ReturnType<typeof pagesCollection>,
+    type: string
+  ): unknown {
+    const content = (
+      collection.fields as { name?: string; type: string }[]
+    ).find(f => f.name === "content");
+    if (content === undefined) throw new Error("no content field");
+    const validate = blocksFieldType().validate;
+    if (validate === undefined)
+      throw new Error("the field type validates nothing");
+    return validate(page(type), {
+      data: {},
+      req: {},
+      field: content,
+      path: "content",
+      mode: "create",
+    });
+  }
+
+  it("refuses a block outside the list, and accepts one inside it", () => {
+    const collection = pagesCollection({ allow: ["core/heading"] });
+
+    expect(verdictOn(collection, "core/heading")).toBe(true);
+    expect(JSON.stringify(verdictOn(collection, "core/quote"))).toContain(
+      "DISALLOWED_BLOCK_TYPE"
+    );
+  });
+
+  it("accepts every registered block when no list is declared", () => {
+    // The control: the refusal above is the declaration's, not the field's.
+    expect(verdictOn(pagesCollection(), "core/quote")).toBe(true);
+  });
+
+  it("is reached from pageBuilder() through pageAllow", () => {
+    const collections = pageBuilder({ pageAllow: ["core/heading"] }).contributes
+      ?.collections as ReturnType<typeof pagesCollection>[] | undefined;
+    const pages = collections?.find(c => c.slug === "pages");
+    if (pages === undefined) throw new Error("no pages collection");
+
+    expect(JSON.stringify(verdictOn(pages, "core/quote"))).toContain(
+      "DISALLOWED_BLOCK_TYPE"
+    );
   });
 });

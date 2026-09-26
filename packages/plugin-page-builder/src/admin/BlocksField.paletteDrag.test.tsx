@@ -379,11 +379,14 @@ const { BlocksField } = await import("./BlocksField");
 /** A form around the field, since it reads its value through a form control. */
 function Host({
   document,
+  field,
 }: {
   document?: BlockDocument;
+  /** The schema's declaration, as the admin passes it. */
+  field?: { blocks?: unknown };
 } = {}): React.JSX.Element {
   const { control } = useForm({ defaultValues: { body: document } });
-  return <BlocksField name="body" control={control} />;
+  return <BlocksField name="body" control={control} field={field} />;
 }
 
 /** A component's own content, as its content field holds it. */
@@ -948,6 +951,96 @@ describe("what a component's own content field may offer", () => {
     fireEvent.click(screen.getByRole("button", { name: OPEN_BUILDER_ACTION }));
 
     expect(recorded("insertPanel").components).toBe(rows);
+  });
+});
+
+describe("what a field's allow-list lets the panel offer", () => {
+  /*
+   * The field's `allow` was enforced at SAVE only: the panel offered every
+   * registered block, every pattern and every component, accepted the insert,
+   * and the save then refused the document with `DISALLOWED_BLOCK_TYPE`.
+   * What is asserted is that the declaration the admin passes REACHES all
+   * three tiers — `insert-allow.test.ts` asserts what each tier keeps.
+   */
+  const definition = {
+    formatVersion: 1,
+    kind: "component",
+    nodes: [{ id: "d1", type: "core/box", version: 1, props: {} }],
+  };
+  const componentRows = [{ id: "hero", title: "Hero", document: definition }];
+  const patternRows = [
+    {
+      id: "clean",
+      title: "Clean",
+      granularity: "section",
+      document: {
+        formatVersion: 1,
+        kind: "pattern",
+        nodes: [{ id: "h", type: "core/heading", version: 1, props: {} }],
+      },
+    },
+    {
+      id: "quoted",
+      title: "Quoted",
+      granularity: "section",
+      document: {
+        formatVersion: 1,
+        kind: "pattern",
+        nodes: [{ id: "q", type: "core/quote", version: 1, props: {} }],
+      },
+    },
+  ];
+
+  function openUnder(field?: { blocks?: unknown }): Record<string, unknown> {
+    componentAnswer = {
+      items: componentRows,
+      meta: { count: 1, truncated: false },
+    };
+    libraryAnswer = {
+      items: patternRows,
+      meta: { count: 2, truncated: false },
+    };
+    render(<Host field={field} />);
+    fireEvent.click(screen.getByRole("button", { name: OPEN_BUILDER_ACTION }));
+    return recorded("insertPanel");
+  }
+
+  it("narrows blocks, patterns and components to the declared list", () => {
+    const panel = openUnder({
+      blocks: { allow: ["core/heading", "core/text"] },
+    });
+
+    expect(
+      (panel.definitions as { name: string }[]).map(d => d.name).sort()
+    ).toEqual(["core/heading", "core/text"]);
+    expect((panel.patterns as { id: string }[]).map(p => p.id)).toEqual([
+      "clean",
+    ]);
+    // Instances are not named, so no component is offered.
+    expect(panel.components).toEqual([]);
+  });
+
+  it("offers the components once instances are admitted", () => {
+    const panel = openUnder({
+      blocks: { allow: ["nextly/component-instance", "core/heading"] },
+    });
+    expect((panel.components as { id: string }[]).map(c => c.id)).toEqual([
+      "hero",
+    ]);
+  });
+
+  it("leaves every tier whole when the field declares no list", () => {
+    // The control: the narrowing above is the declaration's doing, not a
+    // filter that always runs.
+    const panel = openUnder(undefined);
+    expect(panel.definitions).toBeUndefined();
+    expect((panel.patterns as { id: string }[]).map(p => p.id)).toEqual([
+      "clean",
+      "quoted",
+    ]);
+    expect((panel.components as { id: string }[]).map(c => c.id)).toEqual([
+      "hero",
+    ]);
   });
 });
 

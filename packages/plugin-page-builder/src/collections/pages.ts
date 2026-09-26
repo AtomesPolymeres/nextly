@@ -80,6 +80,17 @@ export interface PagesCollectionOptions {
    * on.
    */
   breakpoints?: PreviewViewportsDeclaration;
+
+  /**
+   * The block types a page's `content` accepts, as a blocks field's
+   * `blocks.allow` takes them. Omitted means every registered block.
+   *
+   * Without it the plugin-owned collection was the one blocks field a host
+   * could not narrow: a site that restricts its homepage to a curated list
+   * still let every page take anything, and the list a client works under
+   * depended on which screen they were on.
+   */
+  allow?: readonly string[];
 }
 
 /*
@@ -99,7 +110,7 @@ export interface PagesCollectionOptions {
  * bounds exist to cap a derivation, and the derivation lives with the index.
  */
 export function pagesCollection(options: PagesCollectionOptions = {}) {
-  const { previewPath, breakpoints } = options;
+  const { previewPath, breakpoints, allow } = options;
 
   return defineCollection({
     slug: "pages",
@@ -110,7 +121,14 @@ export function pagesCollection(options: PagesCollectionOptions = {}) {
       // Named `content` because that is what the retired choice called its
       // builder arm: a page already holding a block document keeps rendering
       // rather than reading as empty against a field with a new name.
-      blocks({ name: "content", label: "Page Builder" }),
+      blocks({
+        name: "content",
+        label: "Page Builder",
+        // Spread rather than set to `undefined`: the validator reads an
+        // absent `blocks` as "every registered block", and a copy keeps the
+        // host's array out of reach of anything that mutates the config.
+        ...(allow === undefined ? {} : { blocks: { allow: [...allow] } }),
+      }),
     ],
     status: true,
     // A save keeps a working draft and publishing is its own act, as it is for
