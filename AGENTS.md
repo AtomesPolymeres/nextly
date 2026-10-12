@@ -615,3 +615,11 @@ For non-skill agents, treat the task map below as the local onboarding source: r
 | scope a monorepo                                                  | `--workspace <glob> / --changed-workspaces <ref>` (global flags, prefix any command) |
 
 <!-- fallow:setup-hooks:end -->
+
+## Cerveau de l'agence
+
+Le savoir de l'agence vit dans le vault `/srv/dev/obsidian/agency-brain` (conventions : son `CLAUDE.md`). Ce dépôt relève de son espace **front** : les sites et le framework nextly.
+
+- **Avant d'implémenter**, lire `wiki/index.md`, puis les pages utiles de `wiki/front/`, `wiki/commun/` (process, décisions transverses) et les contrats de `wiki/api/` qu'un site doit respecter pour être mis en production.
+- **Ce qu'on apprend en route** — un piège, une décision, une mesure qui dément une hypothèse, un besoin de changer un contrat — se dépose comme une note brute dans `raw/AAAA-MM-JJ-slug.md` du vault, pour ingestion.
+- **Ne jamais écrire directement dans `wiki/`** depuis ce dépôt : seul l'ingest y écrit.
